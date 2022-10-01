@@ -1,0 +1,431 @@
+
+
+Title: desining control plane
+
+
+	- create a simple project with nullnet, if run it, a sink.z1 and node.z1 will be
+	  created: two types node
+	- add a code in tsch.c to each node receive the minimal schedule and find the
+	  the position of shared slots
+	- add a sdn neighbor (NBR) table to count EB for each NBR and RSSI of last EB
+ 
+
+======= title: create a packet in tsch layer and send it: to create a sdn packet in this
+	       layer
+======= Date: 06062021
+
+	- cannot send packet: i am trying to find the cause of problem in slot operation.c 
+	- add "NETSTACK_MAC.send(NULL, NULL)" instead of adding packet to TSCH queue->ok
+	- now I can send and receive packet but the type of packet of packet is 
+	  considered as data packet not sdn packet in tsch layer!?
+	- I deactive sending packet in app, and also sending EB until associating and joining network. 
+	- I just send report packet in TSCH layer, each 2 second
+	- next step: why we must use "NETSTACK_MAC.send(NULL, NULL)" and why packet type 
+	  doesnot work properly?
+
+======= Date: 07062021
+
+	- I found that by using "NETSTACK_MAC.send(NULL, NULL)", tsch create a packet and add it to 
+          the tsch queue according packet's receiver address. queue corresponding this address 
+	- Now, I cannot receive packet with right frame type? I receive sdn packet as data packet
+	- I still have the problem! I do not know why it is set to data type!?
+	- I tested followings:
+	- frame version is ieee802154- 2015
+	- there is no difference to set packet type in tsch or nullnet app; in both of them
+	  again the type of received packet is data!?
+	- I solve the problem. instead of "NETSTACK_MAC.send(NULL, NULL)", I set attributes of 
+	  packet and use "NETSTACK_FRAMER.create()" to create frame and add it to queue by
+	  "tsch_queue_add_packet" function. this function add the ceated packet to the queue of
+	  receiver addr.
+	- Now, I must do following:
+	- create a report packet format and call it in SDN-report process
+	- add some code in tsch-rx-process to make a distingtion between different packets
+	  e.g. SDN, data, or EB
+	- add a link-table to add in the previous part 
+
+ ======= Date: 08062021
+
+	- Question? why we need to check the type of received packets? it is not possible to identify
+	  the packet based on received slot? maybe we can do in this way, but nodes must exactly be 
+	  informed that each slot is specified for what kind of packets?! in this way we do not have 
+	  enough flexibility; for exp: maybe sometime we need to use shared cells for different purposes
+	  e.g. report or EB ...
+	- so if I receive a packet I must check its type and continue based on type:
+	- if EB    ----> pars EB
+	- if data  ----> look at the flow table to find a TX cell with equal flow ID with RX cell
+	                 if you find a TX cell, tag the packet with same flow ID and put it in the 
+                         queue. if you did not find a TX cell, maybe there is table miss or maybe 
+			 destination of this packet is current node.
+			 For last case, I must match some parts of packet with
+			 rules that are defined for me (current node). dest addr, port number ...
+			 if there is no rule, node consider this packet as table miss and send a 
+			 request to controller.
+			 just a question? can I check the destinatio IP or port of a packet in MAC layer?
+	- if SDN   ----> you must ckeck you receive it from controller or to controller. if from controller
+			 you must do more processes to find the next hop cell (node). if this packet is to
+			 controller, you just need look at flow table to find a TX cell with same ID and 
+			 put the packet in the queue of that flow.
+			 N.B.: probably, we must tag the cells in which we receive controll packets from 
+			 controller. we can use a tag like "from_controller"
+
+	- now, I want to create report packet type?!
+	- I create a report packet, but I have problemm in sdn packet allocation?
+	- Now, I just send a 5 byte array as report packet.
+	- I must complete other tasks... and can come back to this problem later
+ 
+ ======= Date: 09062021
+
+	- question? why memory allocation? the problem is in memory deallocation. I did not do it in 
+	  a right way. you must free the memory after sending report. I deallocate the memory when I 
+	  create a new report packet (delete last one)  
+	- I changed the setting to use the short addr or 2 byte address. By doing so each node can 
+	  accommodate more neighbors in report packet.
+	- I add these also: 
+	  * calculate the size of report packet and put it in the packetbuf_size
+	  * purge the sdn neighbor table after each report sending
+	  * define a conf in application to set the period of report
+	  * I add the "packetbuf_set_attr(PACKETBUF_ATTR_MAC_ACK, 1)" to enable ACK. 
+	  * we can also set the number of re-transmission when we add a packet to the queue
+
+	- now, I must send a report packet in a two hop network and receive config packet from sink 
+	  node. this confing packet includs the join-to-network command. 
+	  because, currently, we do not have matching table for RX and TX cells, and also we still 
+	  use shared slots without any queue seperation per flow, we can set the parent node for each 
+	  node statically. this parent node is used to send to it the to-controller sdn packets. 
+	  instead of this static parent, we later receive some dedicated cells and the address of NBR
+	  for control plane. 
+	- question? frame version is not solved yet!?
+	- But I used the data type frame to send sdn packets.
+	- statically, just one-hop nodes from sink are able to send report and receive an empty config packet
+	- remained problems:
+	  * frame type does not work for sdn type
+	  * if I set number of transmission bigger than 1 , I receive duplicate packet!?
+	  * implementation is very raw and must be developed for multi-hop transmission.
+	  * create a config packet format 
+	  * read the schedule from config packet and install it
+	  * add a fucntion in sink node for handle request of nodes and send config 
+	  * add a table that links the RX cells with TX cell, when a node receive a packet must search in this table
+
+ ======= Date: 10062021
+
+	- based on our meeting today, we conclude that it is not right way to define a SDN type in 15.4 
+	  header file. we consdider sdn packet as a data packet and find a different way to meke distinction
+	  between sdn type and other data types.
+
+	- there are two problem to be solved first:
+	  * how decide aboute sdn type packet?
+	  * active mac_callback to prevent sending duplicate packets in mac layer
+	- about the second problem I found that it is better to use "NETSTACK_MAC.send(NULL, NULL)"
+	  I discussed in 07062021"date". but it was wrong!!!! 
+
+ ======= Date: 11062021
+
+	- I must insert the address of sender node in the report packet; this lets the sink node
+	  to identify the sender of report packet. it is not possible to use mac address in header of 
+	  packet, because the address of sender and receiver are changing in each hop.
+	- above idea is done!!
+
+ ======= Date: 14062021
+
+	- list of tasks to do:
+	- we must use a callback function to free the memory after sending report
+	- I must fixed the number of retransmission for Report packet
+	- I must set a initial timer, when I send first report packet
+	- list of registered node in the sink
+	- creat a Config packet structure and send it to node
+	- installing a static routing to forward in multihop 
+	- set the SDN type in packet
+
+	- changed files: 
+		- os/net/mac/framer/frame802154e-ie.h : add a function to create an SDN IE in data packet
+		- os/net/mac/framer/frame802154e-ie.c : 
+
+ ======= Date: 15062021
+
+	- I tried to enable IE flag in frame and add IE payload in sdn packets
+	  I enable the IE flag by send a report by : "packetbuf_set_attr(PACKETBUF_ATTR_MAC_METADATA, 1)"
+	  also, I add "frame80215e_create_ie_header_list_termination_1" to specify the end of Header IE, 
+	  also, I add the "frame80215e_create_ie_sdn" to define my IE (specify the sdn type) in the packet. I 
+	  defined this function in frame802154e-ie.h. 
+	  also I add the "frame80215e_create_ie_payload_list_termination" to specify the end of Payload IE.
+	  bu I have problem in parsing the IE in receiver side. 
+	  I just specify the type of sdn packets just by checking (is_data && IE_flag_is_enabled) and subtract 
+	  the the 6 bytes that allocated to the IE from the begining og packetbuf. then process the packet
+
+	- must check freeing packet after putting in the packet buff report packet
+	- I use deallocate created sdn packet after copying it to packetbuf. it works!
+	- Now, I must set the number of retransmission of report packet
+
+ ======= Date: 15062021
+	- I set the max transmission to 1 for sdn packets.
+	- Now I want to create a config packet type
+	- I add a table to register the nodes, 
+	- I disabled the IE parts at the begining of report packet and just set the IE flag in the FCF header. 
+	  and just check the type of sdn packet by this flag and type of packet (is data or EB ...)
+	- i add the joined falg in report packet. for the first time sink is able to check in the registered nodes
+	  to verify the sender node is novel or no, but maybe a joined node after joning to the network again
+	  be disconnected from sdn network. by setting this flag each time sink can check that the sender is joined or no! 
+
+	- in the "sdn_input", if you are sink you must check the type of received sdn-packet and handle it
+	  if you are normal node, you have to check, you joined the sdn network or no? if no, you must check
+          the type of packet if it is config packet and its destination is you, so you must process it
+	  if you are joined, you just handle it based on the flow-table rules. 
+	  
+	- must to do now:
+	- install the schedule
+	- add flow id to schedule
+	- add a forwarding flow table
+	- check you are the destination of packet or no?!
+	- test for multi-hop
+	- calculate free slots in sink
+
+	- we supposed here that we just have a single slotframe (sf) and work on it.we add the schedule to this 
+	  sf.
+	- KEEP in mind, I can define a neew packetbuf attr to set flow ID for a packet
+	- i decided to to define two sperated flow for control flow (upward and downward)
+	  and send the config of each flow by different config packet 
+
+	- will must to do:
+	- add "befor_last_node" in config packet process
+	- test it for multihop
+	- add some function to calculte a config packet fields
+	- add flow-id forwarding
+
+ ======= Date: 22062021
+
+	- I solve the problem of using IE for sending sdn data. I used the sixp code 
+	- I use a header_ie_termination1 to signal the end of header ie and use a single payload ie 
+	  to accommodate sdn data in which. I defined the "payload_ie_termination" optional. we can enable it
+	  in sdn-conf. its default is not active
+	- why just a single IE is used to send sdn data:
+	  1- by doing so, we minimize the modification of base code, because base code just process a single IE!
+	  2- also we derease the implementation volume code
+
+	- I defined a sdn-inout module to send and receive sdn data. it includes the "sdn_input" and "sdn_output"
+	  sdn_input process the header IE and sdn payload IE and send the payload of sdn IE to "sdn_handle" function.
+	  sdn_output is used to put the sdn data in the IE section, set attributes and send it.
+	  So, if we want to send or receive a sdn packet we use them! sdn_input is used in the tsch packet_input function 
+	  and sdn_output is used after every sdn packet creation. 
+	- "sdn_handle" function is used to process received sdn packet
+
+	- what I will do:
+	  complete the discussed plan with Fabrice about the flow forwarding
+	  change the Config packet format 
+	  install the flow forwarding 
+
+ ======= Date: 23062021
+
+	- I changed the format of config packet
+	- is it need to check the type of all the sdn packets in RX mode or no must work based on the 
+	  cell id and just process the config packet (or check the just config type)
+	  based on the flow id:
+	  in this way, 
+	  1- I must specify the control cells that their direction is from-controller. to make a distinction
+	     between other RX control cells. 
+	  2- if I receive a packet in shared cells again I must check the type of packet to see it is report packet and 
+	     check the destination adddress
+	  3- just for the 
+	  based on the checking type method:
+          each node checks the type of all the sdn packets
+
+ ======= Date: 24062021
+
+	- i create the flow table. its inputs is flow id, addr of nbr, is_tx and is_rx
+	- nodes add the initial flow id at the bigening of joining to tsch network; shared cells flow id
+	- each node can add the new flow to the table
+
+ ======= Date: 27062021
+
+	- add code to handle packet befor checking the type of packet
+	- check the format of flow id
+	- add the flow id to the metadata of sent and received packet
+	- change the code of sdn_hamndle 
+	- in tsch-types.h I add the flow-id to the attrs of input packet
+	- in tsch-types.h I add the flow-id to the attrs of tsch packet
+	- I add the flow_id attr to packetbuf attrs in contiki ng
+	- what to do
+	- which node must add config flow id?
+	- in slot operation must add a code to store flow id of cell to metadata of packet
+	- now I store the flow-id of RX cell in the metadata of received packet!
+	- I will do:
+	- change the sdn_handle function
+	- add the rules in packet input to work based on the flow id
+
+ ======= Date: 28062021
+
+	- I can handle the pkt in packet_input Based on NULL, shared cell and normal
+	- if NULL or shard && sdn pkt ---> sdn_input
+	- if !(NULL or shard && sdn pkt) ---> flow table ---> tag flow_id and enqueue pkt
+	- if !(NULL or shard && sdn pkt) and data pkt ---> flow table ---> tag flow_id and enqueue pkt
+	- if (NULL or shard && sdn pkt) and data pkt ---> routing table
+
+	- if the cell option of last node (config) is RX, it sets the flow id for that cell as linkaddr_null
+	- set the code for a static 2 hop scenario
+
+	next plan:
+	- make decision about flow table and routing table structure
+	- add the code of routing table
+	- work based on rules and flow id
+
+ ======= Date: 29062021
+	- I add a routing table 
+	- last node add the SINK address to the routing table
+	- QUESTION: we must specify the UPLINK cells? when we add previous rule? it seems there is no need to 
+	  if we have two different packet with same src and dest, we must make distiction by port number, ip number ...
+	- now report packets are handles based on dedicated cells
+	- but flow table still deos not work
+	- for sending report node set the address of parent as flow-id. this must be changed!!
+	- QUESTION: PROBLEM: if befor_last_hop node install the schedule of Config packet. it sends the config through installed schedule
+	  while the it must send it over shared cells. So, novel node is not able to receive the config
+
+ ======= Date: 01072021
+
+	- add the routing table
+	- I add find_flow_rule and add_flow_rule to the routing table
+	- each node when generate a report packet, use routing table to find the flow_id (temporarly use next hop addr)
+	- sdn_output function add the flow ID of tx cell to the packet. it must later be used to construct the flow-queue
+
+ ======= Date: 05072021
+
+	- I must omit the dest address from argument of sdn_output and sdn_relay_send functions
+	- 3 problem:
+	- first: number of retransmission
+	- second: hnadle config packets over dedicated cells
+	- third: change the dest address in sdn_output and sdn_relay_send functions
+
+ ======= Date: 13072021
+
+	- I had a problem with pasring ACK; sender node could not pares the ack and failed
+	- I found that because by default the PAN ID compression is enabled in TSCH, ack packet deos not include 
+	  pan ID and sender return error!
+	  it follows the table in the standard to decide about pan id compression, if I enable the src address field in the 
+	  ack packet, it also includes the pan id. so sender can process the ack and deosnot send duplicate packets 
+
+ ======= Date: 15072021
+
+	- to minimize the modifications, we can leave the modifing of EB packet to add Folw-id to it! and do not change it
+	  the current implementation of TSCH, mac layer handles packet based on its type. if it is EB-> it follows EB processing
+	  if it is data -> it follows packet input -> so we can just add flow id to the 
+
+
+ ======= Date: 20072021
+
+	- main part must be changed:
+	  # report block: how to set address of parent, how to look up in flow table. routing table must be removed and just work 
+            by flow table
+	  #  
+
+	- I implement SDN_INOUT() funtion
+	- after implementation of flow table, I mast complete data part
+
+ ======= Date: 27072021
+
+	- i add afunction in TSCH-Opreation that looks in the SDN-FLOW id to find flow ID correspond to each timeslot number.
+	- defined a function in SDN_FLOW to find a entry corresponding sf number and timeslot number. if there are multiple match in the table 
+	  for this sf and timeslot, it return the entry with highest priority.
+
+	- change tsch_queue_get_time_source to return time_source entry if sdn enabled
+	- add time_source address to the TSCH neighbor struct
+	- change these two functions (in tsch.c) "resynchronize" and "keepalive_send" to work on sdn time source modifications
+
+	- change the tsch-slot-operation to not work based on "is_time_source" like past. it compare the dest address of current
+	  packet with "time_source_nbr->time_source" address. if equal ---> update the sync info for time_source_nbr ...
+
+ ======= Date: 29072021
+
+	- MUST BE DONE LATER: 
+	# ADD INITIAL FLOW ID (BROADCAST) TO THE FLOW TABLE
+	# ADD PRIORITY OPTION IN TSCH-SLOT-OPERATION 
+	# SEND NUMBER OF SHAREDSLOTS IN PAYLOAD OF EB
+	# ADD SHARED SLOT IDEA FOR DOWNWARD DIRECTION
+	# INVESTIGATE THE PROBLEM OF SLOT-OFF WHEN REMOVING THE PAST IMPLEMENTATION
+
+	- ADD INITIAL FLOW ID (BROADCAST) TO THE FLOW TABLE : because they are shared cells, in function "tsch_queue_get_packet_for_nbr" 
+	  does not accept shared cells. MUST BE INVESTIGATED LATER
+
+
+
+ ======= Date: 17092021
+
+	- I enable the TSCH-slot-operation to change the destination address just befor sending packet. it is set to link->addr 
+	- I disabled the following logs in project and SOLVED the slot-off problem
+          - printfs in project files specially in sdn-inout.c and sdn-handle
+          - TSCH-LOG-LEVEL in project-conf.h
+
+ ======= Date: 21092021
+
+	- I implement best effort data flow: 
+	- in report packet I specified two for number of best_effort_slots: best_effort_slots is counted in config process of is_last_node
+	- in SINK, if there are to_controller and from_controller for a node, it sends a config for best effort flow
+	- config of best effort flow is handled over from_controller_flow id
+	- installing best_effort flow is like to-controller flow just by different setting for config packet.
+
+
+ ======= Date: 20102021
+
+	- cooja crash problem: it was because of NULL pointer. program attemts to read the value of a NULL pointer value and because of that the 
+	  cooja crashs! conclusion: befor calling or reading a pointer value you must check whether it is NULL or not!!
+	- I change the time source flow id part implementation. Actually, I did this to reduce the modification over TSCH. In new implementation I 
+	  directly add the time source node address as a neighbor in the TSCH neighbor queue! by each new time source update I omit the previouse 
+	  time source neighbor from tsch queue. the TSch queue is like following:
+	  +----------------------+
+	  +   EB queue           +
+	  +----------------------+
+	  +   broadcast queue    +
+	  +----------------------+
+	  +   flow_id 1          +
+	  +----------------------+
+	  +   flow_id 2          +
+	  +----------------------+
+	  +   flow_id 3          +
+	  +----------------------+
+	  +   ........           +
+	  +----------------------+
+	  + time_source addr     +
+	  +----------------------+
+	  
+	  Maybe we will encounter with some time sync problem in the future ! must be carefull about this implementation, specially in tsch_slot
+	  operation code. 
+	  
+	  - another issue: when I change the nullnet with udp-ipv6, the address format of cooja is changed and is reversed like following:
+	    nullnet  ------->   node_link_layer_addr = [1, 0]
+	    udp/ipv6 ------->   node_link_layer_addr = [0, 1]
+	  
+	  - so, to adapt to this format, I changed the format of flow_id in code to not be confilicted with lladdr!
+	  - I create a backup from preveiose format for nullnet project and save it in .../mac/tsch/sdn_nullnet directory 
+	  - for running the sdn_nullnet project you must use this directory.
+	  
+ ======= Date: 22092021  
+	  - I defines a static IPv6 for srver. POINT: I must define this ths IP in the UDP proccess; if I define this 
+	    at the begining of code I will get a ERROR
+	  - because we supposed the data flow as a convegcast traffic so controller does not define any downward flow-id and 
+	    and schedule for respons that are coming from server to nodes. So, I desaibled the "WITH_SERVER_REPLY = 0 "
+	    it means server does not repond the request of nodes.
+	  - the output of Siclowpan is deliverd to the sdn_output() function to embed the flow id in the data packet. 
+	     here, also the flow id of data is delivered to the sdn layer.
+	  - in sdn_input, it also removes the IE parts (includes flow id) and sends the payload to the upper layer.
+	  
+
+ ======= Date: 29092021
+
+	 - I enable the TSCH to pigyback the number_of_shared slots in payload of EB. in the association step. node read this value 
+	   and finds the position of shared slots in the sf. each node send this value by itself in EB
+
+ ======= Date: 04102021
+ 
+	- I had a problem: just for a specific number of slotfame my project worked. it was because of problem in function 
+	  "tsch_queue_update_all_backoff_windows" in which I did not update the backoff number for shared slot NBR and 
+	  the config packet could not be sent over shared slot in the case there is a collision in the shared slot. 
+	  I address this issue by adding line of code to check the address of shared_cell_nbr
+
+
+
+
+
+
+
+
+
+
+
+

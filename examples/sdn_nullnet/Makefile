@@ -1,0 +1,15 @@
+CONTIKI_PROJECT = sdn-project
+all: $(CONTIKI_PROJECT)
+
+CONTIKI = ../..
+
+#PLATFORMS_EXCLUDE = native
+
+MAKE_MAC = MAKE_MAC_TSCH
+MAKE_NET = MAKE_NET_NULLNET
+
+
+
+MODULES += $(CONTIKI_NG_MAC_DIR)/tsch/sdn
+
+include $(CONTIKI)/Makefile.include
