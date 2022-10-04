@@ -184,7 +184,7 @@ sdn_handle_config_packet(struct sdn_packet *p, uint16_t len, const linkaddr_t *s
     struct tsch_neighbor *n;
     int flow_id_index;
     int sf_id_index;
-    struct sdn_link link;
+    static struct sdn_link link;
     int prvs_num_cell_per_hop;
     int sum_lapsed_cell = 0;
     uint16_t repe_counter;
@@ -196,6 +196,7 @@ sdn_handle_config_packet(struct sdn_packet *p, uint16_t len, const linkaddr_t *s
         sum_lapsed_cell = p->payload[counter+i] + sum_lapsed_cell;
       }
       counter = counter + ((p->payload[CONF_NUM_SOURCE_ROUTING_NODE_INDEX]) - 1);
+      printf("check 1: sum_lapsed_cell:%d, counter: %d , pcounter:%d\n", sum_lapsed_cell, counter, p->payload[counter]);
       flow_id_index = counter;
       counter = counter + 2;
       sf_id_index = counter;
@@ -219,7 +220,7 @@ sdn_handle_config_packet(struct sdn_packet *p, uint16_t len, const linkaddr_t *s
         sf = sf0;
       }
       link.link_option = LINK_OPTION_TX;
-      counter = counter + (sum_lapsed_cell * 2);
+      counter = counter + (sum_lapsed_cell * 3);
       
       
       repe_period = p->payload[CONF_REPETION_PERIOD + 1];
@@ -229,7 +230,7 @@ sdn_handle_config_packet(struct sdn_packet *p, uint16_t len, const linkaddr_t *s
       }
       repe_counter = counter;
       repe_num = SDN_DATA_SLOTFRAME_SIZE/repe_period;
-      LOG_INFO("sdn-handle: config repe_period: %d, repe_num:% \n", repe_period, repe_num);
+      LOG_INFO("sdn-handle: config repe_period: %d, repe_num:%d \n", repe_period, repe_num);
       for(m=0; m<repe_num; m++) {
         counter = repe_counter;
         for(i=0; i<prvs_num_cell_per_hop; i++) {
@@ -238,7 +239,7 @@ sdn_handle_config_packet(struct sdn_packet *p, uint16_t len, const linkaddr_t *s
           counter = counter + 2;
           link.channel_offset = p->payload[counter]; 
           counter++;
-    
+          LOG_INFO("sdn-handle: config slot: %d, m:%d \n", link.slot, m);
           tsch_schedule_add_link(sf,
                                  LINK_OPTION_TX,
 	                         LINK_TYPE_NORMAL, &link.addr, link.slot + (m * repe_period), 
@@ -329,7 +330,7 @@ sdn_handle_config_packet(struct sdn_packet *p, uint16_t len, const linkaddr_t *s
       else{
         sf = sf0;
       }
-      counter = counter + (sum_lapsed_cell * 2);
+      counter = counter + (sum_lapsed_cell * 3);
       
       repe_period = p->payload[CONF_REPETION_PERIOD + 1];
       repe_period = (repe_period <<8) + p->payload[CONF_REPETION_PERIOD];
@@ -428,7 +429,7 @@ sdn_handle_config_packet(struct sdn_packet *p, uint16_t len, const linkaddr_t *s
       else{
         sf = sf0;
       }
-      counter = counter + (sum_lapsed_cell * 2);
+      counter = counter + (sum_lapsed_cell * 3);
       
       repe_period = p->payload[CONF_REPETION_PERIOD + 1];
       repe_period = (repe_period <<8) + p->payload[CONF_REPETION_PERIOD];
