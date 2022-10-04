@@ -34,8 +34,8 @@ fi
 
 
 ######################################################################### 
-NODE_NUM_LIST=(15)                        # network size included Sink
-NODE_CRITIC_NUM=(14)                       # number of critic nodes
+NODE_NUM_LIST=(10)                        # network size included Sink
+NODE_CRITIC_NUM=(9)                       # number of critic nodes
 BKG_TS_NUM=(1)                           # number of besteffort timeslot that each node has
 ORCH_SF_LEN=(101)                 # orch sf size 
 LQR_LIST=(0.71)
@@ -60,22 +60,23 @@ do
 				while [[ $i -le $ITER_PER_CONF ]]
 				do
 						python3 /home/fvg/contiki-ng/examples/sdn_udp/py-config-creator-shared_CP/main.py \
-						sf_size=[251] \
+						sf_size=[1506] \
 						ctrl_sf_size=[30] \
 						sf_rep_period=[251] \
+						eb_perid=[15060] \
 						node_num=[${NODE_NUM_LIST[j]}] \
 						server_num=[$SRVR_NUM] \
 						client_bkg_num=[$((${NODE_NUM_LIST[j]}-${NODE_CRITIC_NUM[j]}-SRVR_NUM))] \
 						client_critic_num=[${NODE_CRITIC_NUM[j]}] \
-						bkg_traffic_period=[2.51] \
-						critic_traffic_period=[2.51] \
+						bkg_traffic_period=[2510] \
+						critic_traffic_period=[2510] \
 						bkg_timeslot_num=[1] \
 						tx_range=[50.0] \
 						intf_range=[100.0] \
 						tx_success=[1.0] \
 						rx_success=[${LQR_LIST[k]}] \
-						x_radius=[$((${NODE_NUM_LIST[j]}*360/100))] \
-						y_radius=[$((${NODE_NUM_LIST[j]}*360/100))] \
+						x_radius=[$((${NODE_NUM_LIST[j]}*400/100))] \
+						y_radius=[$((${NODE_NUM_LIST[j]}*400/100))] \
 						itr=[$i] \
 						sim_time_sdn=[11000000] \
 						sim_time_orch=[3000000] \

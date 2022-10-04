@@ -40,8 +40,8 @@ then
 		rm topo_graph
 fi
 ######################################################################### 
-NODE_NUM_LIST=(3)                        # network size included Sink
-NODE_CRITIC_NUM=(2)                       # number of critic nodes
+NODE_NUM_LIST=(15)                        # network size included Sink
+NODE_CRITIC_NUM=(14)                       # number of critic nodes
 BKG_TS_NUM=(1)                           # number of besteffort timeslot that each node has
 ORCH_SF_LEN=(101)                 # orch sf size 
 LQR_LIST=(0.71)
@@ -81,8 +81,8 @@ do
 						intf_range=[100.0] \
 						tx_success=[1.0] \
 						rx_success=[${LQR_LIST[k]}] \
-						x_radius=[$((${NODE_NUM_LIST[j]}*400/100))] \
-						y_radius=[$((${NODE_NUM_LIST[j]}*400/100))] \
+						x_radius=[$((${NODE_NUM_LIST[j]}*430/100))] \
+						y_radius=[$((${NODE_NUM_LIST[j]}*430/100))] \
 						sim_time_sdn=[10000000] \
 						sim_time_orch=[3000000] \
 						itr_num=[$i]   # 50 min sim len and ASN time is 30

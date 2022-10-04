@@ -105,13 +105,13 @@
 #define SDN_CONF_REPORT_PERIOD   (20 * 1506 / 100)          // = 150 sec
 //#define SDN_CONF_NUM_SHARED_CELL_IN_REP  20   // num shared cells per sub-SF repetition
 //#define SDN_CONF_SHARED_CONTROL_PLANE   0 
-#define SDN_CONF_SHARED_FROM_CTRL_FLOW    1
+//#define SDN_CONF_SHARED_FROM_CTRL_FLOW    1
 
 /* SDN LOG Level */
 #define SDN_LOG_LEVEL                  LOG_LEVEL_INFO
 #define SDN_INOUT_LOG_LEVEL            LOG_LEVEL_WARN
-#define SDN_HANDLE_LOG_LEVEL           LOG_LEVEL_WARN
-#define SDN_FLOW_LOG_LEVEL             LOG_LEVEL_WARN
+#define SDN_HANDLE_LOG_LEVEL           LOG_LEVEL_INFO
+#define SDN_FLOW_LOG_LEVEL             LOG_LEVEL_INFO
 #define SDN_ALGO_LOG_LEVEL             LOG_LEVEL_INFO
 #define SDN_REQ_FLOW_LOG_LEVEL         LOG_LEVEL_INFO
 #define SDN_SINK_LOG_LEVEL             LOG_LEVEL_INFO

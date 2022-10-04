@@ -21,7 +21,7 @@
 #define LOG_LEVEL SDN_SINK_LOG_LEVEL
 
 
-static float POS_ARRAY[3][2] = {{0, 0}, {0.15, 8.62}, {-2.97, -1.78}};
+static float POS_ARRAY[15][2] = {{0, 0}, {-41.29, -26.27}, {35.14, -25.04}, {44.8, -5.88}, {16.72, -29.78}, {-39.25, 27.23}, {-20.59, 3.85}, {-4.05, -11.61}, {3.51, 30.41}, {-35.62, -6.64}, {-5.07, -2.0}, {-54.77, -4.81}, {57.45, 11.54}, {37.75, -35.66}, {39.76, -42.08}};
 
 static linkaddr_t last_flow_id = {{ 0x08, 0x00 }};
 static float coef = 0.5;
@@ -74,6 +74,8 @@ int specify_shared_cell_offset_for_node(const linkaddr_t *node_addr);
 void alloc_eb_shared_cell_to_sink(void);
 
 int get_first_free_shared_timeslot(void);
+
+int calculate_num_shared_cell(void);
 
 /*---------------------------------------------------------------------------*/
 /* list of shared cells */
@@ -429,9 +431,9 @@ add_slot_to_taken_cell_list(const linkaddr_t *node_addr, int is_ctrl_cell, int s
      if(e->data_taken_slot[0][slot_offset] == -1) {
         e->data_taken_slot[0][slot_offset] = slot_offset;
         e->data_taken_slot[1][slot_offset] = ch_offset;
-        LOG_INFO("CONTROLLER: add slot %d with ch %d to node \n", e->data_taken_slot[0][slot_offset], e->data_taken_slot[1][slot_offset]);
-        LOG_INFO_LLADDR(&e->node_addr);
-        LOG_INFO("\n");
+        //LOG_INFO("CONTROLLER: add slot %d with ch %d to node \n", e->data_taken_slot[0][slot_offset], e->data_taken_slot[1][slot_offset]);
+        //LOG_INFO_LLADDR(&e->node_addr);
+        //LOG_INFO("\n");
         return 1;
       } 
     }
@@ -2071,22 +2073,82 @@ init_num_shared_cells(void)
 }
 */
 /*---------------------------------------------------------------------------*/
+/* this function calculate the number of needed shared cells given:
+   network size
+   topology density
+   accepted collision rate
+   load of traffic
+*/
+int
+calculate_num_shared_cell(void)
+{
+  const float p = 0.05;     // we accept 5% collision in shared cellls
+  float r = 0.01;
+  float p_lumbda = 1;
+  float lumbda = 1 + r;        // load of traffic in shared cells
+  int ncell;
+  
+  while(p_lumbda > p) {
+    lumbda = lumbda - r;
+    p_lumbda = 1 - (exp(-lumbda) * (lumbda + 1));    
+  }
+  
+  ncell = (int)round(1 / lumbda);
+  printf("ncell: %d, lumbda: %f \n", ncell, lumbda);  
+  
+  int num_ring = (int)ceil(NETWORK_RADIUS/TX_RANGE);
+  int sum_cell;
+  int i;
+  int r1 = 0;
+  int r2 = 0;
+  float pi = 3.142857;
+  int nodei;
+  for(i=1; i<num_ring+1; i++) {
+    if(i*TX_RANGE > NETWORK_RADIUS) {
+      r1 = r2;
+      r2 = NETWORK_RADIUS;
+    } else {
+      r1 = r2;
+      r2 = i*TX_RANGE;
+    }    
+    nodei = (int)ceil(((pi*pow(r2,2) - pi*pow(r1,2)) / (pi*pow(NETWORK_RADIUS,2))) * NETWORK_SIZE);
+    // to include the sink node
+    if(i == 1) {
+      nodei = nodei - 1;
+    }
+    
+    // we simply double it to reserve also some cells for downward traffic
+    // times by 2 because : we have report + ( config, request, ack-config)
+    if(i == num_ring) {
+      nodei = nodei * 2;
+    }
+    sum_cell = sum_cell + i * (nodei * ncell);    
+    printf("cell calculation: numring: %d, sumcell: %d, nodei: %d, \n", num_ring, sum_cell, nodei);
+  }
+  
+  sum_cell = (int)ceil((float)(sum_cell * SDN_DATA_SLOTFRAME_SIZE) / (float)(SDN_REPORT_PERIOD * 100));
+  printf("sum_cell: %d \n", sum_cell);
+  
+  return sum_cell;
+}
+/*---------------------------------------------------------------------------*/
 /* specify number of shared cells given the network size */
 /* TODO we can only test the case sf_len = sf_rep */
 void
 init_num_shared_cells(void)
 {
   float cell_ratio = (float)NETWORK_SIZE/(int)((TSCH_EB_PERIOD/10) / SDN_DATA_SLOTFRAME_SIZE);
+  int extra_shared_cells = calculate_num_shared_cell();
   //printf("cell ration0: %f, eb/sf: %d\n", cell_ratio, (int)((TSCH_EB_PERIOD/10) / SDN_DATA_SLOTFRAME_SIZE));
   //printf("cell ration diff: %f", cell_ratio - (int)cell_ratio);
-  if(NETWORK_SIZE > 0) {
+  /*if(NETWORK_SIZE > 0) {
     if((cell_ratio - (int)cell_ratio) > 0.5) {
       cell_ratio = cell_ratio + 1;
       //printf("cell ration1: %f\n", cell_ratio);
     }
   }
+  */
   
-  cell_ratio = cell_ratio + ((float)NETWORK_SIZE/5) + 1;
   
   /*
   if((cell_ratio - (int)cell_ratio) == 0) {
@@ -2096,10 +2158,10 @@ init_num_shared_cells(void)
   }
   */
   //printf("cell ration2: %f\n", cell_ratio);
-  sdn_num_shared_cell = (int)cell_ratio;
+  sdn_num_shared_cell = (int)(cell_ratio + extra_shared_cells);
   sdn_num_shared_cell_in_rep = (int)ceil(((float)sdn_num_shared_cell / (float)(SDN_DATA_SLOTFRAME_SIZE / SDN_SF_REP_PERIOD)));
                                //(int)ceil((float)((float)sdn_num_shared_cell / (float)num_rep))
-  //printf("sdn_num_shared_cell_in_rep: %d\n", sdn_num_shared_cell_in_rep);
+  printf("sdn_num_shared_cell: %d, sdn_num_shared_cell_in_rep: %d\n", sdn_num_shared_cell, sdn_num_shared_cell_in_rep);
   
   int i;
   int j;

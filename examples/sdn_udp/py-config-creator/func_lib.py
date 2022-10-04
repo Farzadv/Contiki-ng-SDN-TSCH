@@ -114,6 +114,7 @@ def create_network_graph(nodes_num, x_radius, y_radius, tx_range):
             p1_in_disk = 0
             while p1_in_disk == 0:
                 p1 = [random_gen(-x_radius, x_radius), random_gen(-y_radius, y_radius)]
+                # to be sure the chosen point is in the Disk
                 if math.sqrt((p1[0] ** 2) + (p1[1] ** 2)) < (x_radius - 1):
                     p1_in_disk = 1
 
@@ -146,3 +147,8 @@ def create_network_graph(nodes_num, x_radius, y_radius, tx_range):
             final_array = connected_list
 
     return final_array
+    
+    
+    
+    
+    

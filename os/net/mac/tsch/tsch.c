@@ -1144,7 +1144,7 @@ PROCESS_THREAD(sdn_report_process, ev, data)
   static struct etimer sf_offset_timer;
   static uint8_t report_seq = 0;
   uint8_t report_size = R_NBR_NUB_INDEX +1;
-  uint16_t slotframe_offset = 10;
+  //uint16_t slotframe_offset = 10;
 //sdn_ie
 
 
@@ -1163,13 +1163,13 @@ PROCESS_THREAD(sdn_report_process, ev, data)
   // make a random delay in joining process to avoid congestion of join requests in controller
   etimer_set(&report_timer, (random_rand() % 300) * CLOCK_SECOND);
   PROCESS_WAIT_UNTIL(etimer_expired(&report_timer));
-  
+/*  
   while(slotframe_offset != 0) {
     PROCESS_WAIT_UNTIL(etimer_expired(&report_timer));
     etimer_reset(&report_timer);
     slotframe_offset = (uint16_t)(((uint16_t)(tsch_current_asn.ls4b % (int)(TSCH_EB_PERIOD / 10))) / SDN_DATA_SLOTFRAME_SIZE);
   }
-
+*/
   /*
   LOG_INFO("TSCH-SDN: first report delay 1\n");
   etimer_set(&report_timer, SDN_REPORT_PERIOD * CLOCK_SECOND);
@@ -1186,13 +1186,15 @@ PROCESS_THREAD(sdn_report_process, ev, data)
       LOG_INFO("sdn report process: TSCH is not associated \n");
     } else {
   
-      /* find first offset to send report packet */  
+      /* find first offset to send report packet */ 
+      /* 
       while(slotframe_offset != 0) {
         PROCESS_WAIT_UNTIL(etimer_expired(&sf_offset_timer));
         etimer_reset(&sf_offset_timer);
         slotframe_offset = (uint16_t)(((uint16_t)(tsch_current_asn.ls4b % (int)(TSCH_EB_PERIOD / 10))) / SDN_DATA_SLOTFRAME_SIZE);
       }
-    
+      */
+      
       struct sdn_packet *report = create_sdn_packet();
       report->typ = REPORT;
       report_seq ++;

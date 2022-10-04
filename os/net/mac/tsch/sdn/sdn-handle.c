@@ -229,7 +229,7 @@ sdn_handle_config_packet(struct sdn_packet *p, uint16_t len, const linkaddr_t *s
       }
       repe_counter = counter;
       repe_num = SDN_DATA_SLOTFRAME_SIZE/repe_period;
-      
+      LOG_INFO("sdn-handle: config repe_period: %d, repe_num:% \n", repe_period, repe_num);
       for(m=0; m<repe_num; m++) {
         counter = repe_counter;
         for(i=0; i<prvs_num_cell_per_hop; i++) {
@@ -432,12 +432,13 @@ sdn_handle_config_packet(struct sdn_packet *p, uint16_t len, const linkaddr_t *s
       
       repe_period = p->payload[CONF_REPETION_PERIOD + 1];
       repe_period = (repe_period <<8) + p->payload[CONF_REPETION_PERIOD];
+      
       if(repe_period<1) {
         repe_period = SDN_DATA_SLOTFRAME_SIZE;
       }
       repe_counter = counter;
       repe_num = SDN_DATA_SLOTFRAME_SIZE/repe_period;
-      
+
       for(m=0; m<repe_num; m++) {
         counter = repe_counter;
         for(i=0; i<next_num_cell_per_hop; i++) {
