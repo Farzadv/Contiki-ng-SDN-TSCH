@@ -559,7 +559,7 @@ eb_input(struct input_packet *current_input)
     if(eb_ies.max_sf_offs > sdn_max_used_sf_offs) {
       sdn_max_used_sf_offs = eb_ies.max_sf_offs;
       sf0->max_sf_offs = eb_ies.max_sf_offs;
-      printf("update max sf offs 2 %d \n", sdn_max_used_sf_offs);
+      //printf("update max sf offs 2 %d \n", sdn_max_used_sf_offs);
     }
 #endif
 /*---------------------------------------------------------------------------*/
@@ -880,7 +880,7 @@ tsch_associate(const struct input_packet *input_eb, rtimer_clock_t timestamp)
    
   int num_rep = (int)(SDN_DATA_SLOTFRAME_SIZE / SDN_SF_REP_PERIOD);
   int num_sh_cell_in_rep = (int)ceil((float)((float)sf0->num_shared_cell / (float)num_rep));
-  printf("num_sh_cell_in_rep: %d \n", num_sh_cell_in_rep);
+  //printf("num_sh_cell_in_rep: %d \n", num_sh_cell_in_rep);
 #define SHARED_CELL_LIST_LEN_TMP  100  
   const int list_shared_cell_len = (int)(num_sh_cell_in_rep * num_rep);
   static int list_of_shared_cell[SHARED_CELL_LIST_LEN_TMP];

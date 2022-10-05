@@ -21,7 +21,7 @@
 #define LOG_LEVEL SDN_SINK_LOG_LEVEL
 
 
-static float POS_ARRAY[15][2] = {{0, 0}, {-41.29, -26.27}, {35.14, -25.04}, {44.8, -5.88}, {16.72, -29.78}, {-39.25, 27.23}, {-20.59, 3.85}, {-4.05, -11.61}, {3.51, 30.41}, {-35.62, -6.64}, {-5.07, -2.0}, {-54.77, -4.81}, {57.45, 11.54}, {37.75, -35.66}, {39.76, -42.08}};
+static float POS_ARRAY[12][2] = {{0, 0}, {-5.36, 32.54}, {-45.04, -11.05}, {-23.25, -4.02}, {28.08, -22.98}, {-38.84, 22.54}, {0.34, 12.65}, {-23.89, 29.27}, {-8.26, -16.95}, {37.08, -23.41}, {-35.99, 12.48}, {14.08, -14.76}};
 
 static linkaddr_t last_flow_id = {{ 0x08, 0x00 }};
 static float coef = 0.5;
@@ -2082,7 +2082,7 @@ init_num_shared_cells(void)
 int
 calculate_num_shared_cell(void)
 {
-  const float p = 0.05;     // we accept 5% collision in shared cellls
+  const float p = 0.03;     // we accept 5% collision in shared cellls
   float r = 0.01;
   float p_lumbda = 1;
   float lumbda = 1 + r;        // load of traffic in shared cells
@@ -2094,7 +2094,7 @@ calculate_num_shared_cell(void)
   }
   
   ncell = (int)round(1 / lumbda);
-  printf("ncell: %d, lumbda: %f \n", ncell, lumbda);  
+  printf("ncell for lambda: %d, lumbda: %f >> \n", ncell, lumbda);  
   
   int num_ring = (int)ceil(NETWORK_RADIUS/TX_RANGE);
   int sum_cell;
@@ -2103,6 +2103,21 @@ calculate_num_shared_cell(void)
   int r2 = 0;
   float pi = 3.142857;
   int nodei;
+  //int last_full_ring;
+  // we simply multiply last ring cells to reserve also some cells for ( config, request, ack-config)
+  // times by 2 because : we have report + ( config, request, ack-config)
+  int cell_coef;
+#if SDN_SHARED_CONTROL_PLANE
+  cell_coef = 2;     // to include report, config, and (request, ack-config)
+#elif SDN_SHARED_FROM_CTRL_FLOW
+  cell_coef = 1;     // to include only config and intial reports
+#else
+  cell_coef = 1;
+#endif
+
+
+
+
   for(i=1; i<num_ring+1; i++) {
     if(i*TX_RANGE > NETWORK_RADIUS) {
       r1 = r2;
@@ -2111,23 +2126,33 @@ calculate_num_shared_cell(void)
       r1 = r2;
       r2 = i*TX_RANGE;
     }    
-    nodei = (int)ceil(((pi*pow(r2,2) - pi*pow(r1,2)) / (pi*pow(NETWORK_RADIUS,2))) * NETWORK_SIZE);
-    // to include the sink node
+    nodei = (int)round(((pi*pow(r2,2) - pi*pow(r1,2)) / (pi*pow(NETWORK_RADIUS,2))) * NETWORK_SIZE);
+    
+    // to not include the sink node
     if(i == 1) {
       nodei = nodei - 1;
     }
     
-    // we simply double it to reserve also some cells for downward traffic
-    // times by 2 because : we have report + ( config, request, ack-config)
+    
     if(i == num_ring) {
-      nodei = nodei * 2;
+      nodei = nodei * cell_coef;
     }
+#if SDN_SHARED_CONTROL_PLANE   
     sum_cell = sum_cell + i * (nodei * ncell);    
-    printf("cell calculation: numring: %d, sumcell: %d, nodei: %d, \n", num_ring, sum_cell, nodei);
+    printf("cell calculation: ring: %d, sumcell: %d, nodei: %d >> \n", i, sum_cell, nodei);
+#else  
+    /* only consider the last ring: it should be enough, because the joining process is like a wave.
+       In each priod of time, nodes of one ring are joining to the network
+    */
+    if(i == num_ring) {     
+      sum_cell = sum_cell + i * (nodei * ncell);    
+      printf("cell calculation: ring: %d, sumcell: %d, nodei: %d >> \n", i, sum_cell, nodei);
+    }
+#endif
   }
   
   sum_cell = (int)ceil((float)(sum_cell * SDN_DATA_SLOTFRAME_SIZE) / (float)(SDN_REPORT_PERIOD * 100));
-  printf("sum_cell: %d \n", sum_cell);
+  printf("estimated shared sum_cell: [%d] \n", sum_cell);
   
   return sum_cell;
 }

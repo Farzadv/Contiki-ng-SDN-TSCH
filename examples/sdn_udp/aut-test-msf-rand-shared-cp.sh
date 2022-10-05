@@ -34,11 +34,11 @@ fi
 
 
 ######################################################################### 
-NODE_NUM_LIST=(10)                        # network size included Sink
-NODE_CRITIC_NUM=(9)                       # number of critic nodes
+NODE_NUM_LIST=(25)                        # network size included Sink
+NODE_CRITIC_NUM=(24)                       # number of critic nodes
 BKG_TS_NUM=(1)                           # number of besteffort timeslot that each node has
 ORCH_SF_LEN=(101)                 # orch sf size 
-LQR_LIST=(0.71)
+LQR_LIST=(0.80)
 ITER_PER_CONF=1                           # number of iteration for each config.csc
 SRVR_NUM=1                                # number of server
 

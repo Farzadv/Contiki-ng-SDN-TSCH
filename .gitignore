@@ -69,7 +69,7 @@ tests/18-coap-lwm2m/leshan-server-demo*.jar
 
 # SDN specific files
 track of project
-examples/orch_udp
-examples/sdn_nullnet
-examples/sdn_udp/*.csc
-!examples/sdn_udp/config.csc
+# examples/orch_udp
+# examples/sdn_nullnet
+# examples/sdn_udp/*.csc
+# !examples/sdn_udp/config.csc

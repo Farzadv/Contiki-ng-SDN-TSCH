@@ -34,6 +34,7 @@ struct list_dist_uniform{
 
 #define SDN_MAX_PAYLOAD     100
 #define FLOW_ID_SIZE        2
+#define CONFIG_CELL_SIZE    3   // 2 byte: timeslot, 1 byte: channel offset
 
 /******************** REPORT packet index *********************/
 #define R_SENDER_ADDR_INDEX     0
