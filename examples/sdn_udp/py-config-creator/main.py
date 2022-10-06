@@ -7,7 +7,7 @@ from conf_tmp import *
 import random
 import numpy as np
 
-
+user_home_path = os.path.expanduser('~')
 
 print('====> INPUT PARAMITER    =   ', str(sys.argv))
 param_input = sys.argv
@@ -91,7 +91,7 @@ def replaceall(file, searchexp, replaceexp):
             tem_line = line
         sys.stdout.write(tem_line)
 
-replaceall("/home/fvg/contiki-ng/os/net/mac/tsch/sdn/sdn-sink.c", "POS_ARRAY", "static float POS_ARRAY[" + str(node_num) +"][2] = " + str(cfile_pos_array) +';'+ '\n')
+replaceall(user_home_path + "/contiki-ng/os/net/mac/tsch/sdn/sdn-sink.c", "POS_ARRAY", "static float POS_ARRAY[" + str(node_num) +"][2] = " + str(cfile_pos_array) +';'+ '\n')
 
 sf_offs_list = []
 if node_num < 6:
@@ -113,7 +113,7 @@ cfile_sf_offs_list = str(sf_offs_list)
 cfile_sf_offs_list = cfile_sf_offs_list.replace('[', '{')
 cfile_sf_offs_list = cfile_sf_offs_list.replace(']', '}')
 print(' sf offs list', cfile_sf_offs_list)
-#replaceall("/home/fvg/contiki-ng/os/net/mac/tsch/sdn/sdn-sink.c", "shared_cell_shuffle_list", \
+#replaceall(user_home_path + "/contiki-ng/os/net/mac/tsch/sdn/sdn-sink.c", "shared_cell_shuffle_list", \
 #           "static int shared_cell_shuffle_list[" + str(sf_offs_list_len) +"] = " + str(cfile_sf_offs_list) +';'+ '\n')
 
 # #########################################################
@@ -294,18 +294,18 @@ sdn_template = add_mote_id("ZXCVBN", mote_id)
 sdn_template = set_simulation_time("EDCRFV")
 sdn_template = update_rand_seed()
 
-file_w = open("/home/fvg/contiki-ng/examples/sdn_udp/py-config-creator/config.csc", "w+")
+file_w = open(user_home_path + "/contiki-ng/examples/sdn_udp/py-config-creator/config.csc", "w+")
 file_w.write(sdn_template)
 file_w.close()
 
-if os.path.exists("/home/fvg/contiki-ng/examples/sdn_udp/config.csc"):
-    os.remove("/home/fvg/contiki-ng/examples/sdn_udp/config.csc")
+if os.path.exists(user_home_path + "/contiki-ng/examples/sdn_udp/config.csc"):
+    os.remove(user_home_path + "/contiki-ng/examples/sdn_udp/config.csc")
 else:
     print("config.csc does not exist in directory.../sdn_udp/")
-newPath = shutil.copy('/home/fvg/contiki-ng/examples/sdn_udp/py-config-creator/config.csc', '/home/fvg/contiki-ng/examples/sdn_udp')
+newPath = shutil.copy(user_home_path + "/contiki-ng/examples/sdn_udp/py-config-creator/config.csc", user_home_path + "/contiki-ng/examples/sdn_udp")
 print("====> CONFIG-SDN file is created and added to .../sdn_udp/ directory")
 
-newPath = shutil.copy('/home/fvg/contiki-ng/examples/sdn_udp/topo_graph', '/home/fvg/msf-contiki/contiki-ng/examples/6tisch/msf')
+newPath = shutil.copy(user_home_path + "/contiki-ng/examples/sdn_udp/topo_graph", user_home_path + "/msf-contiki/contiki-ng/examples/6tisch/msf")
 
 # ###########################################################################################################
 
@@ -401,21 +401,21 @@ orch_template = set_orch_mote_type("QWERTY", mote_type_id_orch_srv, mote_type_id
 orch_template = add_orch_motes("ASDFGH", mote_spec)
 orch_template = add_orch_mote_id("ZXCVBN", mote_id)
 orch_template = set_orch_simulation_time("EDCRFV")
-file_w = open("/home/fvg/contiki-ng/examples/sdn_udp/py-config-creator/config_orch_sf.csc", "w+")
+file_w = open(user_home_path + "/contiki-ng/examples/sdn_udp/py-config-creator/config_orch_sf.csc", "w+")
 file_w.write(orch_template)
 file_w.close()
 
-if os.path.exists("/home/fvg/contiki-ng/examples/sdn_udp/config_orch_sf.csc"):
-    os.remove("/home/fvg/contiki-ng/examples/sdn_udp/config_orch_sf.csc")
+if os.path.exists(user_home_path + "/contiki-ng/examples/sdn_udp/config_orch_sf.csc"):
+    os.remove(user_home_path + "/contiki-ng/examples/sdn_udp/config_orch_sf.csc")
 else:
     print("config.csc does not exist in directory.../sdn_udp/")
-newPath = shutil.copy('/home/fvg/contiki-ng/examples/sdn_udp/py-config-creator/config_orch_sf.csc', '/home/fvg/contiki-ng/examples/sdn_udp')
+newPath = shutil.copy(user_home_path + "/contiki-ng/examples/sdn_udp/py-config-creator/config_orch_sf.csc", user_home_path + "/contiki-ng/examples/sdn_udp")
 print("====> CONFIG-ORCHESTRA file is created and added to .../sdn_udp/ directory")
 
-if os.path.exists("/home/fvg/contiki-ng/examples/sdn_udp/config_orch.csc"):
-    os.remove("/home/fvg/contiki-ng/examples/sdn_udp/config_orch.csc")
+if os.path.exists(user_home_path + "/contiki-ng/examples/sdn_udp/config_orch.csc"):
+    os.remove(user_home_path + "/contiki-ng/examples/sdn_udp/config_orch.csc")
 
-file = open("/home/fvg/contiki-ng/examples/sdn_udp/config_orch.csc", "w+")
+file = open(user_home_path + "/contiki-ng/examples/sdn_udp/config_orch.csc", "w+")
 file.close()
 ############################################################################################################
 

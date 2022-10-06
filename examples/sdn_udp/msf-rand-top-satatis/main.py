@@ -9,7 +9,7 @@ from statistics import mean
 # import glob
 import numpy as np
 
-
+user_home_path = os.path.expanduser('~')
 std_state_delay_df = pd.DataFrame(columns=['End-to-End delay(s)', 'Network Solution', 'Network size'])
 convergence_delay_df = pd.DataFrame(columns=['End-to-End delay(s)', 'Network Solution', 'Network size'])
 convergence_df = pd.DataFrame(columns=['Convergence time (s)', 'Network Solution', 'Network size'])
@@ -21,8 +21,8 @@ sf_max_cell_usage_df = pd.DataFrame(columns=['Max cell usage per SF and node', '
 never_used_cell_df = pd.DataFrame(columns=['Number of never used cells', 'Network Solution', 'Network size'])
 
 app_int = 2.51
-net_size_array = [10]
-lqr_array = [0.71]
+net_size_array = [12, 18, 24]
+lqr_array = [0.80]
 simu_len = 1000
 
 sent_asn_start_sing = 's|as '
@@ -75,7 +75,7 @@ num_hop_addr_end_sing = ']]'
 max_cell_usage_start = '[MAX sf cell usage: '
 max_cell_usage_end = ' node_addr '
 
-log_dir = "/home/fvg/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log"
+log_dir = user_home_path + "/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log"
 logfile_list = os.listdir(log_dir)
 log_list = sorted(logfile_list)
 
@@ -90,7 +90,7 @@ def get_list_of_log_file(filename_key, list_to_search):
 
 
 def e2e_delay(log_file_name, end_node_id):
-    log_path = "/home/fvg/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log/" + str(log_file_name)
+    log_path = user_home_path + "/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log/" + str(log_file_name)
     file = open(log_path, "r")
     input_lines = file.readlines()
     file.close()
@@ -149,7 +149,7 @@ def e2e_delay(log_file_name, end_node_id):
 
 
 def msf_e2e_delay(log_file_name, end_node_id):
-    log_path = "/home/fvg/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log/" + str(log_file_name)
+    log_path = user_home_path + "/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log/" + str(log_file_name)
     file = open(log_path, "r")
     input_lines = file.readlines()
     file.close()
@@ -187,7 +187,7 @@ def msf_e2e_delay(log_file_name, end_node_id):
 
 
 def sdn_get_num_scheduled_ts(log_file_name, net_size):
-    log_path = "/home/fvg/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log/" + str(log_file_name)
+    log_path = user_home_path + "/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log/" + str(log_file_name)
     file = open(log_path, "r")
     input_lines = file.readlines()
     file.close()
@@ -222,7 +222,7 @@ def sdn_get_num_scheduled_ts(log_file_name, net_size):
 def msf_get_num_scheduled_ts(log_file_name, net_size, rx_success):
 
     sdn_file_name = str(log_file_name).replace("msf", "sdn")
-    log_path = "/home/fvg/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log/" + str(sdn_file_name)
+    log_path = user_home_path + "/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log/" + str(sdn_file_name)
     file = open(log_path, "r")
     input_lines = file.readlines()
     file.close()
@@ -237,7 +237,7 @@ def msf_get_num_scheduled_ts(log_file_name, net_size, rx_success):
             e = line.find(ideal_cell_num_sign2)
             ideal_cell_num = ideal_cell_num + int(line[s:e])
 
-    log_path = "/home/fvg/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log/" + str(log_file_name)
+    log_path = user_home_path + "/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log/" + str(log_file_name)
     file = open(log_path, "r")
     input_lines = file.readlines()
     file.close()
@@ -260,7 +260,7 @@ def msf_get_num_scheduled_ts(log_file_name, net_size, rx_success):
 #
 # def msf_get_num_scheduled_ts(log_file_name, net_size, rx_success):
 #     position_array = []
-#     pos_log = open("/home/fvg/contiki-ng/examples/sdn_udp/topo_graph", "r+")
+#     pos_log = open(user_home_path + "/contiki-ng/examples/sdn_udp/topo_graph", "r+")
 #     input_lines = pos_log.readlines()
 #     pos_log.close()
 #
@@ -289,7 +289,7 @@ def msf_get_num_scheduled_ts(log_file_name, net_size, rx_success):
 #                 position_array.append(position)
 #     print("====> NODE's LOCATION ARRAY    =    ", position_array)
 #
-#     log_path = "/home/fvg/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log/" + str(log_file_name)
+#     log_path = user_home_path + "/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log/" + str(log_file_name)
 #     file = open(log_path, "r")
 #     input_lines = file.readlines()
 #     file.close()
@@ -324,7 +324,7 @@ def msf_get_num_scheduled_ts(log_file_name, net_size, rx_success):
     # return sdn_cell_num/ideal_cell_num
 
 def get_max_cell_usage_per_sf(log_file_name, end_node_id):
-    log_path = "/home/fvg/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log/" + str(log_file_name)
+    log_path = user_home_path + "/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log/" + str(log_file_name)
     file = open(log_path, "r")
     input_lines = file.readlines()
     file.close()
@@ -341,7 +341,7 @@ def get_max_cell_usage_per_sf(log_file_name, end_node_id):
 
 
 def number_of_tx_and_collision(log_file_name, end_node_id):
-    log_path = "/home/fvg/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log/" + str(log_file_name)
+    log_path = user_home_path + "/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log/" + str(log_file_name)
     file = open(log_path, "r")
     input_lines = file.readlines()
     file.close()
@@ -498,7 +498,7 @@ def split_converge_time_steady_state(delay_list, node_id_list):
 
 
 def get_convergence_time_sdn_tsch(log_file_name, end_node_id, node_id_list):
-    log_path = "/home/fvg/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log/" + str(log_file_name)
+    log_path = user_home_path + "/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log/" + str(log_file_name)
     file = open(log_path, "r")
     input_lines = file.readlines()
     file.close()
@@ -738,7 +738,7 @@ main_func_plot()
 # ################## calculate collision over shared cell #######################
 # def collision_rate_of_shared_cell(log_file_name):
 #
-#     log_path = "/home/fvg/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log/" + str(log_file_name)
+#     log_path = user_home_path + "/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log/" + str(log_file_name)
 #     file = open(log_path, "r")
 #     input_lines = file.readlines()
 #     input_lines2 = file.readlines()
@@ -828,7 +828,7 @@ main_func_plot()
 
 # # # ################## plot convergence time #######################
 # hue_order = ['MSF(LQR 84.0%)', 'SDN-TSCH(LQR 84.0%)', 'SDN-TSCH-SCP(LQR 84.0%)', 'MSF(LQR 95.0%)', 'SDN-TSCH(LQR 95.0%)', 'SDN-TSCH-SCP(LQR 95.0%)']
-hue_order = ['MSF(LQR 50%)', 'SDN-TSCH(LQR 50%)', 'SDN-TSCH-SCP(LQR 50%)']
+hue_order = ['MSF(LQR 64%)', 'SDN-TSCH(LQR 64%)', 'SDN-TSCH-SCP(LQR 64%)']
 
 sns.set(font_scale=3.2)
 sns.set_style({'font.family': 'serif'})
@@ -985,7 +985,7 @@ plt.savefig('never_cell.pdf', bbox_inches='tight')
 
 # ################# 2APP code ###############
 # def e2e_delay(log_file_name, end_node_id):
-#     log_path = "/home/fvg/contiki-ng/examples/sdn_udp/msf-statistics/log/" + str(log_file_name)
+#     log_path = user_home_path + "/contiki-ng/examples/sdn_udp/msf-statistics/log/" + str(log_file_name)
 #     file = open(log_path, "r")
 #     input_lines = file.readlines()
 #     file.close()

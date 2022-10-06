@@ -1,7 +1,7 @@
 #!/bin/bash
 
 
-#chmod +x /home/fvg/contiki-ng/examples/sdn_udp/py-config-creator/main.py 
+#chmod +x ~/contiki-ng/examples/sdn_udp/py-config-creator/main.py 
 
 # bkg_ts must be devidible to SF size
 # must be carefull about number of timeslots ==> lower "SDN_DATA_SLOTFRAME_SIZE/SDN_SF_REP_PERIOD" exp: 3000/100 = 30 max ts
@@ -13,15 +13,15 @@
 #########################################################################
 
 # create sim-plot directory
-if [ -d "/home/fvg/contiki-ng/examples/sdn_udp/optimal-shared-cell-statis/log" ] 
+if [ -d "~/contiki-ng/examples/sdn_udp/optimal-shared-cell-statis/log" ] 
 then
-    rm -r /home/fvg/contiki-ng/examples/sdn_udp/optimal-shared-cell-statis/log
+    rm -r ~/contiki-ng/examples/sdn_udp/optimal-shared-cell-statis/log
 fi
 
 
-if [ ! -d "/home/fvg/contiki-ng/examples/sdn_udp/optimal-shared-cell-statis/log" ] 
+if [ ! -d "~/contiki-ng/examples/sdn_udp/optimal-shared-cell-statis/log" ] 
 then
-    mkdir mkdir /home/fvg/contiki-ng/examples/sdn_udp/optimal-shared-cell-statis/log
+    mkdir mkdir ~/contiki-ng/examples/sdn_udp/optimal-shared-cell-statis/log
 fi
 
 
@@ -70,7 +70,7 @@ do
 						i=1
 						while [[ $i -le $ITER_PER_CONF ]]
 						do
-								python3 /home/fvg/contiki-ng/examples/sdn_udp/optimal-shared-cell/main.py \
+								python3 ~/contiki-ng/examples/sdn_udp/optimal-shared-cell/main.py \
 								sf_size=[251] \
 								ctrl_sf_size=[30] \
 								sf_rep_period=[251] \
@@ -93,14 +93,14 @@ do
 														
 								########################### TSCH-SDN ############################# 
 								# update random seed in each iteration
-								#python3 /home/fvg/contiki-ng/examples/sdn_udp/rand_seed_gen_py/main.py tsch-sdn
+								#python3 ~/contiki-ng/examples/sdn_udp/rand_seed_gen_py/main.py tsch-sdn
 								
 								java -Xshare:on -jar ../../tools/cooja/dist/cooja.jar -nogui=config.csc -contiki=../../	
 								if [ -f "COOJA.testlog" ] 
 								then
-										cp COOJA.testlog /home/fvg/contiki-ng/examples/sdn_udp/optimal-shared-cell-statis/log
-										mv /home/fvg/contiki-ng/examples/sdn_udp/optimal-shared-cell-statis/log/COOJA.testlog \
-											 /home/fvg/contiki-ng/examples/sdn_udp/optimal-shared-cell-statis/log/sdn-net-${NODE_NUM_LIST[j]}-itr-$i-lqr${LQR_LIST[k]}-shc${SH_CELL_COEF_LIST[n]}.testlog
+										cp COOJA.testlog ~/contiki-ng/examples/sdn_udp/optimal-shared-cell-statis/log
+										mv ~/contiki-ng/examples/sdn_udp/optimal-shared-cell-statis/log/COOJA.testlog \
+											 ~/contiki-ng/examples/sdn_udp/optimal-shared-cell-statis/log/sdn-net-${NODE_NUM_LIST[j]}-itr-$i-lqr${LQR_LIST[k]}-shc${SH_CELL_COEF_LIST[n]}.testlog
 
 								fi
 

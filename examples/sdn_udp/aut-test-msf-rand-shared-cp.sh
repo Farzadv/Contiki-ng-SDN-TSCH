@@ -1,7 +1,7 @@
 #!/bin/bash
 
 
-#chmod +x /home/fvg/contiki-ng/examples/sdn_udp/py-config-creator/main.py 
+#chmod +x ~/contiki-ng/examples/sdn_udp/py-config-creator/main.py 
 
 # bkg_ts must be devidible to SF size
 # must be carefull about number of timeslots ==> lower "SDN_DATA_SLOTFRAME_SIZE/SDN_SF_REP_PERIOD" exp: 3000/100 = 30 max ts
@@ -13,15 +13,15 @@
 #########################################################################
 
 # create sim-plot directory
-if [ -d "/home/fvg/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log-shared-cp" ] 
+if [ -d "~/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log-shared-cp" ] 
 then
-    rm -r /home/fvg/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log-shared-cp
+    rm -r ~/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log-shared-cp
 fi
 
 
-if [ ! -d "/home/fvg/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log-shared-cp" ] 
+if [ ! -d "~/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log-shared-cp" ] 
 then
-    mkdir mkdir /home/fvg/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log-shared-cp
+    mkdir mkdir ~/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log-shared-cp
 fi
 
 
@@ -34,8 +34,8 @@ fi
 
 
 ######################################################################### 
-NODE_NUM_LIST=(25)                        # network size included Sink
-NODE_CRITIC_NUM=(24)                       # number of critic nodes
+NODE_NUM_LIST=(18 24)                        # network size included Sink
+NODE_CRITIC_NUM=(17 23)                       # number of critic nodes
 BKG_TS_NUM=(1)                           # number of besteffort timeslot that each node has
 ORCH_SF_LEN=(101)                 # orch sf size 
 LQR_LIST=(0.80)
@@ -59,7 +59,7 @@ do
 				i=1
 				while [[ $i -le $ITER_PER_CONF ]]
 				do
-						python3 /home/fvg/contiki-ng/examples/sdn_udp/py-config-creator-shared_CP/main.py \
+						python3 ~/contiki-ng/examples/sdn_udp/py-config-creator-shared_CP/main.py \
 						sf_size=[1506] \
 						ctrl_sf_size=[30] \
 						sf_rep_period=[251] \
@@ -84,14 +84,14 @@ do
 												
 						########################### TSCH-SDN ############################# 
 						# update random seed in each iteration
-						#python3 /home/fvg/contiki-ng/examples/sdn_udp/rand_seed_gen_py/main.py tsch-sdn
+						#python3 ~/contiki-ng/examples/sdn_udp/rand_seed_gen_py/main.py tsch-sdn
 						
 						java -Xshare:on -jar ../../tools/cooja/dist/cooja.jar -nogui=config.csc -contiki=../../	
 						if [ -f "COOJA.testlog" ] 
 						then
-								cp COOJA.testlog /home/fvg/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log-shared-cp
-								mv /home/fvg/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log-shared-cp/COOJA.testlog \
-								   /home/fvg/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log-shared-cp/sharedcp-net-${NODE_NUM_LIST[j]}-itr-$i-lqr${LQR_LIST[k]}.testlog
+								cp COOJA.testlog ~/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log-shared-cp
+								mv ~/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log-shared-cp/COOJA.testlog \
+								   ~/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log-shared-cp/sharedcp-net-${NODE_NUM_LIST[j]}-itr-$i-lqr${LQR_LIST[k]}.testlog
 
 						fi
 
