@@ -5,7 +5,7 @@ import os
 from func_lib import *
 from conf_tmp import *
 import random
-import numpy as np
+# import numpy as np
 
 user_home_path = os.path.expanduser('~')
 
