@@ -10,6 +10,7 @@ from statistics import mean
 import numpy as np
 
 user_home_path = os.path.expanduser('~')
+
 std_state_delay_df = pd.DataFrame(columns=['End-to-End delay(s)', 'Network Solution', 'Network size'])
 convergence_delay_df = pd.DataFrame(columns=['End-to-End delay(s)', 'Network Solution', 'Network size'])
 convergence_df = pd.DataFrame(columns=['Convergence time (s)', 'Network Solution', 'Network size'])
@@ -603,7 +604,7 @@ def main_func_plot():
                 # if all(s is None for s in delay_array[980:999]):
                 #     print('problematic log: ' + str(j))
                 for nd_pdr in pdr:
-                    if not (nd_pdr is None):
+                    if not (nd_pdr is None) and nd_pdr > 95:
                         temp_pdr = [nd_pdr, 'SDN-TSCH-SCP(LQR ' + str(math.floor(m * m * 100)) + '%)', i]
                         df_pdr_len = len(pdr_df)
                         pdr_df.loc[df_pdr_len] = temp_pdr

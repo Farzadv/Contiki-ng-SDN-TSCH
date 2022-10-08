@@ -8,6 +8,8 @@ import random
 # import numpy as np
 
 
+user_home_path = os.path.expanduser('~')
+
 print('====> INPUT PARAMITER    =   ', str(sys.argv))
 param_input = sys.argv
 
@@ -53,7 +55,7 @@ print("====> MTYPE VALUES    =    ", mtype_num)
 
 position_array = []
 # position_array = create_network_graph(node_num, tx_range)
-pos_log = open("/home/fvg/contiki-ng/examples/sdn_udp/topo_graph", "r+")
+pos_log = open(user_home_path + "/contiki-ng/examples/sdn_udp/topo_graph", "r+")
 input_lines = pos_log.readlines()
 pos_log.close()
 pos_log_key = 'pos-net' + str(node_num) + '-lqr' + str(rx_success) + '-it' + str(itr) + '='
@@ -109,7 +111,7 @@ def replaceall(file, searchexp, replaceexp):
             tem_line = line
         sys.stdout.write(tem_line)
 
-replaceall("/home/fvg/contiki-ng/os/net/mac/tsch/sdn/sdn-sink.c", "POS_ARRAY", "static float POS_ARRAY[" + str(node_num) +"][2] = " + str(cfile_pos_array) +';'+ '\n')
+replaceall(user_home_path + "/contiki-ng/os/net/mac/tsch/sdn/sdn-sink.c", "POS_ARRAY", "static float POS_ARRAY[" + str(node_num) +"][2] = " + str(cfile_pos_array) +';'+ '\n')
 # #########################################################
 
 num_shared_cell = int(math.ceil(0.4 * node_num))
@@ -268,15 +270,15 @@ sdn_template = add_mote_id("ZXCVBN", mote_id)
 sdn_template = set_simulation_time("EDCRFV")
 sdn_template = update_rand_seed()
 
-file_w = open("/home/fvg/contiki-ng/examples/sdn_udp/py-config-creator-shared_CP/config.csc", "w+")
+file_w = open(user_home_path + "/contiki-ng/examples/sdn_udp/py-config-creator-shared_CP/config.csc", "w+")
 file_w.write(sdn_template)
 file_w.close()
 
-if os.path.exists("/home/fvg/contiki-ng/examples/sdn_udp/config.csc"):
-    os.remove("/home/fvg/contiki-ng/examples/sdn_udp/config.csc")
+if os.path.exists(user_home_path + "/contiki-ng/examples/sdn_udp/config.csc"):
+    os.remove(user_home_path + "/contiki-ng/examples/sdn_udp/config.csc")
 else:
     print("config.csc does not exist in directory.../sdn_udp/")
-newPath = shutil.copy('/home/fvg/contiki-ng/examples/sdn_udp/py-config-creator-shared_CP/config.csc', '/home/fvg/contiki-ng/examples/sdn_udp')
+newPath = shutil.copy(user_home_path + "/contiki-ng/examples/sdn_udp/py-config-creator-shared_CP/config.csc", user_home_path + "/contiki-ng/examples/sdn_udp")
 print("====> CONFIG-SDN file is created and added to .../sdn_udp/ directory")
 
 # ################################################################

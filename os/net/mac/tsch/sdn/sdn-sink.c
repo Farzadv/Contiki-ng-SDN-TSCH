@@ -2108,7 +2108,7 @@ calculate_num_shared_cell(void)
   // times by 2 because : we have report + ( config, request, ack-config)
   int cell_coef;
 #if SDN_SHARED_CONTROL_PLANE
-  cell_coef = 2;     // to include report, config, and (request, ack-config)
+  cell_coef = 1;     // to include report, config, and (request, ack-config)
 #elif SDN_SHARED_FROM_CTRL_FLOW
   cell_coef = 1;     // to include only config and intial reports
 #else
