@@ -160,7 +160,7 @@ def set_mote_type(conf_key, replace_conf, srv_exis, clint_bf_exis, clint_nbf_exi
                                       +str(bkg_timeslot_num)+",SDN_CONF_DATA_SLOTFRAME_SIZE="+str(sf_size) \
                                       +",SDN_CONF_SF_REP_PERIOD="+str(sf_rep_period)+",SDN_CONF_CONTROL_SLOTFRAME_SIZE=" \
                                       +str(ctrl_sf_size)+",SDN_CONF_SIMULATION_RX_SUCCESS="+str(rx_success)+",TX_RANGE="+str(tx_range) \
-                                      +",SDN_CONF_SHARED_CONTROL_PLANE="+str(1) \
+                                      +",SDN_CONF_SHARED_CONTROL_PLANE="+str(0) \
                                       +",NETWORK_SIZE="+str(node_num)+",NETWORK_RADIUS="+str(x_radius))
 
     if clint_bf_exis > 0:
@@ -173,7 +173,7 @@ def set_mote_type(conf_key, replace_conf, srv_exis, clint_bf_exis, clint_nbf_exi
                                       +str(bkg_traffic_period)+",BF_TS_NUM="+str(bkg_timeslot_num)+",SDN_CONF_DATA_SLOTFRAME_SIZE=" \
                                       +str(sf_size)+",SDN_CONF_SF_REP_PERIOD="+str(sf_rep_period)+",SDN_CONF_CONTROL_SLOTFRAME_SIZE=" \
                                       +str(ctrl_sf_size)+",SDN_CONF_SIMULATION_RX_SUCCESS="+str(rx_success)+",TX_RANGE="+str(tx_range) \
-                                      +",SDN_CONF_SHARED_CONTROL_PLANE="+str(1) \
+                                      +",SDN_CONF_SHARED_CONTROL_PLANE="+str(0) \
                                       +",NETWORK_SIZE="+str(node_num)+",NETWORK_RADIUS="+str(x_radius))
 
     if clint_nbf_exis > 0:
@@ -186,7 +186,7 @@ def set_mote_type(conf_key, replace_conf, srv_exis, clint_bf_exis, clint_nbf_exi
                                       +str(critic_traffic_period)+",BF_TS_NUM="+str(bkg_timeslot_num)+",SDN_CONF_DATA_SLOTFRAME_SIZE=" \
                                       +str(sf_size)+",SDN_CONF_SF_REP_PERIOD="+str(sf_rep_period)+",SDN_CONF_CONTROL_SLOTFRAME_SIZE=" \
                                       +str(ctrl_sf_size)+",SDN_CONF_SIMULATION_RX_SUCCESS="+str(rx_success)+",TX_RANGE="+str(tx_range) \
-                                      +",SDN_CONF_SHARED_CONTROL_PLANE="+str(1) \
+                                      +",SDN_CONF_SHARED_CONTROL_PLANE="+str(0) \
                                       +",NETWORK_SIZE="+str(node_num)+",NETWORK_RADIUS="+str(x_radius))
 
     return sdn_template.replace(conf_key, mote_type)

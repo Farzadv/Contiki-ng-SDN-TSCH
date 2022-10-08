@@ -14,13 +14,13 @@
 #########################################################################
 
 # create sim-plot directory
-if [ -d "~/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log" ] 
+if [ -d "${HOME}/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log" ] 
 then
     rm -r ~/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log
 fi
 
 
-if [ ! -d "~/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log" ] 
+if [ ! -d "${HOME}/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log" ] 
 then
     mkdir mkdir ~/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log
 fi

@@ -19,7 +19,7 @@ then
 fi
 
 
-if [ ! -d "~/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log-shared-cp" ] 
+if [ ! -d "${HOME}/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log-shared-cp" ] 
 then
     mkdir ~/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log-shared-cp
 fi
@@ -34,8 +34,8 @@ fi
 
 
 ######################################################################### 
-NODE_NUM_LIST=(12 18 24)                        # network size included Sink
-NODE_CRITIC_NUM=(11 17 23)                       # number of critic nodes
+NODE_NUM_LIST=(24)                        # network size included Sink
+NODE_CRITIC_NUM=(23)                       # number of critic nodes
 BKG_TS_NUM=(1)                           # number of besteffort timeslot that each node has
 ORCH_SF_LEN=(101)                 # orch sf size 
 LQR_LIST=(0.80)
@@ -78,7 +78,7 @@ do
 						x_radius=[$((${NODE_NUM_LIST[j]}*400/100))] \
 						y_radius=[$((${NODE_NUM_LIST[j]}*400/100))] \
 						itr=[$i] \
-						sim_time_sdn=[11000000] \
+						sim_time_sdn=[10000000] \
 						sim_time_orch=[3000000] \
 						itr_num=[$i]   # 50 min sim len and ASN time is 30
 												
