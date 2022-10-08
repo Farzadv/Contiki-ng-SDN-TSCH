@@ -78,7 +78,7 @@ do
 						x_radius=[$((${NODE_NUM_LIST[j]}*400/100))] \
 						y_radius=[$((${NODE_NUM_LIST[j]}*400/100))] \
 						itr=[$i] \
-						sim_time_sdn=[10000000] \
+						sim_time_sdn=[11000000] \
 						sim_time_orch=[3000000] \
 						itr_num=[$i]   # 50 min sim len and ASN time is 30
 												
