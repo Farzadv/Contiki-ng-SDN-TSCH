@@ -16,7 +16,7 @@ struct cell_info{
   uint8_t sf_id;
 };
 
-#define SHARED_CELL_LIST_LEN      80
+#define SHARED_CELL_LIST_LEN      300
 struct list_of_shared_cell{
   int cell_list[SHARED_CELL_LIST_LEN];
   uint8_t ch_off;

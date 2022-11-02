@@ -98,7 +98,7 @@ def get_val_from_input_array(input_array, param):
 #     print("num_max_hop_in_array ===>"+str(num_max_hop_in_array))
 #     print("pos array len ===>"+str(len(pos_array)))
 #     return pos_array
-def create_network_graph(nodes_num, x_radius, y_radius, tx_range):
+def create_network_graph(nodes_num, x_radius, y_radius, tx_range, worst_link):
     max_iter = 30000
     pos_array = []
     p1_sink = [0, 0]
@@ -117,8 +117,8 @@ def create_network_graph(nodes_num, x_radius, y_radius, tx_range):
                 # to be sure the chosen point is in the Disk
                 if math.sqrt((p1[0] ** 2) + (p1[1] ** 2)) < (x_radius - 1):
                     p1_in_disk = 1
-
             pos_array.append(p1)
+
         # check connectivity of graph
         connected_list = []
         connected_list.append(p1_sink)
@@ -128,7 +128,9 @@ def create_network_graph(nodes_num, x_radius, y_radius, tx_range):
             tmp_list = []
             for i in range(len(connected_list)):
                 for j in range(len(pos_array)):
-                    if math.sqrt(((connected_list[i][0] - pos_array[j][0]) ** 2) + ((connected_list[i][1] - pos_array[j][1]) ** 2)) < (tx_range):
+                    tmp_dist = math.sqrt(((connected_list[i][0] - pos_array[j][0]) ** 2) + (
+                                (connected_list[i][1] - pos_array[j][1]) ** 2))
+                    if (1 - ((tmp_dist ** 2) / (tx_range ** 2))) > worst_link:
                         if pos_array[j] not in tmp_list:
                             tmp_list.append(pos_array[j])
 

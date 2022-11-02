@@ -881,7 +881,7 @@ tsch_associate(const struct input_packet *input_eb, rtimer_clock_t timestamp)
   int num_rep = (int)(SDN_DATA_SLOTFRAME_SIZE / SDN_SF_REP_PERIOD);
   int num_sh_cell_in_rep = (int)ceil((float)((float)sf0->num_shared_cell / (float)num_rep));
   //printf("num_sh_cell_in_rep: %d \n", num_sh_cell_in_rep);
-#define SHARED_CELL_LIST_LEN_TMP  100  
+#define SHARED_CELL_LIST_LEN_TMP  DIST_UNIFORM_LEN  
   const int list_shared_cell_len = (int)(num_sh_cell_in_rep * num_rep);
   static int list_of_shared_cell[SHARED_CELL_LIST_LEN_TMP];
   
@@ -1249,25 +1249,60 @@ PROCESS_THREAD(sdn_report_process, ev, data)
       report->payload[R_BATT_INDEX] = 100;                 // battery level
       report->payload[R_REPORT_SEQ_NUM_INDEX] = report_seq;
       report->payload[R_METRIC_TYP_INDEX] = EB_NUM;
+      
+      /* if number of NBRs are bigger than SDN_MAX_NUM_REPORT_NBR=35, filter best NBRs to report */
+      float exp_eb_num = ((float)SDN_REPORT_PERIOD/((float)TSCH_EB_PERIOD/(float)CLOCK_SECOND));
+      float valid_eb_rate = 0;
+      int sdn_nbr_num = 0;    
+      struct sdn_nbr *stat = nbr_table_head(sdn_nbrs);
+
+      while(stat != NULL){
+	sdn_nbr_num ++;
+        stat = nbr_table_next(sdn_nbrs, stat);
+      }
+      
+      if(sdn_nbr_num > SDN_MAX_NUM_REPORT_NBR) {
+        int find_valid_eb_rate = 0; 
+        int tmp_num_nbr;
+        valid_eb_rate = 0.45;
+        while(!find_valid_eb_rate || valid_eb_rate >= 1) {
+          tmp_num_nbr = 0;
+          valid_eb_rate = valid_eb_rate + 0.05;
+          stat = nbr_table_head(sdn_nbrs);
+          while(stat != NULL){
+            if(((float)stat->rx_eb_count / exp_eb_num) > valid_eb_rate) {
+	      tmp_num_nbr ++;
+	    }
+            stat = nbr_table_next(sdn_nbrs, stat);
+          }
+          if(tmp_num_nbr < SDN_MAX_NUM_REPORT_NBR) {
+            find_valid_eb_rate = 1;
+            printf("SDN-TSCH: valid EB rate to report: %f \n", valid_eb_rate);
+          }
+        }
+      }
+      
 
       /* fill report packet with neighbor info: EB, RSSI, addr */
       uint8_t nbr_num = 0;
       linkaddr_t * addr = NULL;
       if(SDN_LINK_METRIC == EB_NUM){
-        struct sdn_nbr *stat = nbr_table_head(sdn_nbrs);
+        stat = nbr_table_head(sdn_nbrs);
 
 	while(stat != NULL){
-          addr = nbr_table_get_lladdr(sdn_nbrs, stat);
-	  nbr_num ++;
-	  /* put the addr of neighbor in report packet */
-	  uint8_t j;
-	  for (j = 0; j< LINKADDR_SIZE; ++j){
-	    report->payload[report_size] = addr->u8[j];
-	    report_size = report_size + 1;
+	  if(((float)stat->rx_eb_count / exp_eb_num) > valid_eb_rate) {
+            addr = nbr_table_get_lladdr(sdn_nbrs, stat);
+	    nbr_num ++;
+	    /* put the addr of neighbor in report packet */
+	    uint8_t j;
+	    for (j = 0; j< LINKADDR_SIZE; ++j){
+	      report->payload[report_size] = addr->u8[j];
+	      report_size = report_size + 1;
+            }
+            report->payload[report_size] = stat->rx_eb_count;
+            report_size = report_size +1;
           }
-          report->payload[report_size] = stat->rx_eb_count;
           stat = nbr_table_next(sdn_nbrs, stat);
-          report_size = report_size +1;
         }
       }
       report->payload[R_NBR_NUB_INDEX] = nbr_num;
@@ -1300,7 +1335,7 @@ PROCESS_THREAD(sdn_report_process, ev, data)
       } else {
         sdn_output(addr, &flow_id_to_controller, 1, NULL);
       }
-      printf("send report packet\n");
+      printf("\n send report packet with size: %d\n", report_size+1);
 #endif
       packet_deallocate(report);
     } 
@@ -1318,7 +1353,9 @@ PROCESS_THREAD(tsch_send_eb_process, ev, data)
   static struct etimer eb_timer;
 #if SDN_ENABLE
   static struct etimer eb_period_timer1;
-  //static struct etimer eb_period_timer2;
+#if SDN_UNCONTROLLED_EB_SENDING
+  static struct etimer eb_period_timer2;
+#endif
 #endif
 
   PROCESS_BEGIN();
@@ -1332,7 +1369,7 @@ PROCESS_THREAD(tsch_send_eb_process, ev, data)
     PROCESS_WAIT_UNTIL(etimer_expired(&eb_timer));
     etimer_reset(&eb_timer);
   }
-printf("Start with TSCH and SDN ...\n");
+printf("\nnode %d%d Start with TSCH and SDN at ASN: 0x%lx ]\n", linkaddr_node_addr.u8[0], linkaddr_node_addr.u8[1], tsch_current_asn.ls4b);
 #endif
 #if !SDN_ENABLE
   while(!tsch_is_associated) {
@@ -1351,8 +1388,9 @@ printf("Start with TSCH and SDN ...\n");
   etimer_set(&eb_period_timer1, TSCH_EB_PERIOD);
 #endif
   while(1) {
-    //unsigned long delay;
-
+#if SDN_UNCONTROLLED_EB_SENDING
+    unsigned long delay;
+#endif
     if(!tsch_is_associated) {
       LOG_DBG("skip sending EB: not joined a TSCH network\n");
     } else if(tsch_current_eb_period <= 0) {
@@ -1390,12 +1428,13 @@ printf("Start with TSCH and SDN ...\n");
 #if SDN_ENABLE    
     PROCESS_WAIT_UNTIL(etimer_expired(&eb_period_timer1));
     etimer_reset(&eb_period_timer1);
-    
-    //delay = (random_rand() % TSCH_EB_PERIOD);
-    //delay = (tsch_current_eb_period - tsch_current_eb_period / 4)
-    //    + random_rand() % (tsch_current_eb_period / 4);
-    //etimer_set(&eb_period_timer2, delay);
-    //PROCESS_WAIT_UNTIL(etimer_expired(&eb_period_timer2));
+#if SDN_UNCONTROLLED_EB_SENDING    
+    delay = (random_rand() % TSCH_EB_PERIOD);
+//    delay = (tsch_current_eb_period - tsch_current_eb_period / 4)
+//        + random_rand() % (tsch_current_eb_period / 4);
+    etimer_set(&eb_period_timer2, delay);
+    PROCESS_WAIT_UNTIL(etimer_expired(&eb_period_timer2));
+#endif
 #else
     if(tsch_current_eb_period > 0) {
       /* Next EB transmission with a random delay

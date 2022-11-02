@@ -416,14 +416,18 @@ get_packet_and_flow_for_link(struct tsch_link *link, struct tsch_neighbor **targ
   /* Is this a Tx link? */
   if(link->link_options & LINK_OPTION_TX) {
     /* is it for advertisement of EB? */
-    
+#if !SDN_UNCONTROLLED_EB_SENDING    
     uint16_t tsch_eb_period_in_num_ts = (int) (TSCH_EB_PERIOD / 10);
     uint16_t curr_slotframe_offset = (uint16_t)(((uint16_t)(tsch_current_asn.ls4b % tsch_eb_period_in_num_ts)) / SDN_DATA_SLOTFRAME_SIZE);
+#endif
     if(link->link_type == LINK_TYPE_ADVERTISING || link->link_type == LINK_TYPE_ADVERTISING_ONLY) {
       /* fetch EB packets */
       //uint16_t shts = (uint16_t) (tsch_current_asn.ls4b % 251);
       
-
+#if SDN_UNCONTROLLED_EB_SENDING
+        n = n_eb;
+        p = tsch_queue_get_packet_for_nbr(n, link);
+#else
       if(curr_slotframe_offset == sdn__sf_offset_to_send_eb && link->timeslot == sdn__ts_offset_to_send_eb) {
         n = n_eb;
         p = tsch_queue_get_packet_for_nbr(n, link);
@@ -441,9 +445,11 @@ get_packet_and_flow_for_link(struct tsch_link *link, struct tsch_neighbor **targ
                 "sf offset: %d", curr_slotframe_offset));
         */
       }
+#endif
     }
     
     int cell_ok = 1;
+#if !SDN_UNCONTROLLED_EB_SENDING
     if(link->link_options & LINK_OPTION_SHARED) {
       if(sdn_is_shared_cell_occupied(curr_slotframe_offset, link->timeslot)) {
         cell_ok = 0;
@@ -454,6 +460,7 @@ get_packet_and_flow_for_link(struct tsch_link *link, struct tsch_neighbor **targ
         */
       }
     }
+#endif
     
     if(link->link_type != LINK_TYPE_ADVERTISING_ONLY && cell_ok) {
       /* NORMAL link or no EB to send, pick a data packet */

@@ -27,6 +27,7 @@ tx_range = get_val_from_input_array(param_input, "tx_range")  # meter
 intf_range = get_val_from_input_array(param_input, "intf_range")  # meter
 tx_success = get_val_from_input_array(param_input, "tx_success")
 rx_success = get_val_from_input_array(param_input, "rx_success")
+worst_link = get_val_from_input_array(param_input, "worst_link")
 x_radius = get_val_from_input_array(param_input, "x_radius")  # meter
 y_radius = get_val_from_input_array(param_input, "y_radius")  # meter
 sim_time_sdn = get_val_from_input_array(param_input, "sim_time_sdn")  # sdn-simulation time in ms
@@ -63,7 +64,7 @@ fail_cntr = 0
 while len(position_array) < node_num:
     fail_cntr += 1
     print("position array fail!"+str(fail_cntr))
-    position_array = create_network_graph(node_num, x_radius, y_radius, tx_range)
+    position_array = create_network_graph(node_num, x_radius, y_radius, tx_range, worst_link)
 
 print("====> NODE's LOCATION ARRAY    =    ", position_array)
 

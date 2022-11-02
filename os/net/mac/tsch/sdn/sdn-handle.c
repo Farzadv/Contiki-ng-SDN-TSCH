@@ -174,6 +174,10 @@ sdn_handle_config_packet(struct sdn_packet *p, uint16_t len, const linkaddr_t *s
                                  link.channel_offset, 1);  
         }
       }
+      
+      printf("install rx cells: node[%d%d], flow id[%d], num cell[%d], asn[0x%lx]]\n", linkaddr_node_addr.u8[0], linkaddr_node_addr.u8[1],
+            flow_id.u8[0], (repe_num * next_num_cell_per_hop), tsch_current_asn.ls4b);
+      
       //tsch_schedule_print();
     } else {
       LOG_INFO("sdn-handle: first node in list->only forward \n");
@@ -400,6 +404,10 @@ sdn_handle_config_packet(struct sdn_packet *p, uint16_t len, const linkaddr_t *s
           }  
         }
       }
+      
+      printf("install rx cells: node[%d%d], flow id[%d], num cell[%d], asn[0x%lx]]\n", linkaddr_node_addr.u8[0], linkaddr_node_addr.u8[1],
+            flow_id.u8[0], (repe_num * next_num_cell_per_hop), tsch_current_asn.ls4b);
+      
       //tsch_schedule_print();
     } else if(prvs_num_cell_per_hop == 0 && next_num_cell_per_hop > 0) {
       int sum_lapsed_cell = 0;
@@ -466,6 +474,10 @@ sdn_handle_config_packet(struct sdn_packet *p, uint16_t len, const linkaddr_t *s
 
         }
       }
+      
+      printf("install rx cells: node[%d%d], flow id[%d], num cell[%d], asn[0x%lx]]\n", linkaddr_node_addr.u8[0], linkaddr_node_addr.u8[1],
+            flow_id.u8[0], (repe_num * next_num_cell_per_hop), tsch_current_asn.ls4b);
+      
       //tsch_schedule_print();
     } else {
       LOG_ERR("sdn-handle: no next nor prvs config \n");

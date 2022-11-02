@@ -116,6 +116,13 @@
 #define SDN_SHARED_CONTROL_PLANE   0
 #endif
 
+/* handle control and EB traffic over shared cells without any control */
+#ifdef SDN_CONF_UNCONTROLLED_EB_SENDING
+#define SDN_UNCONTROLLED_EB_SENDING     SDN_CONF_UNCONTROLLED_EB_SENDING
+#else
+#define SDN_UNCONTROLLED_EB_SENDING     0
+#endif
+
 /* Max SDN packet len: in SDN layer befor adding 6 byte SDN-IEs */
 #ifdef SDN_CONF_MAX_PACKET_LEN
 #define SDN_MAX_PACKET_LEN     SDN_CONF_MAX_PACKET_LEN

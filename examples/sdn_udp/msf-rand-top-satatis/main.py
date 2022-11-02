@@ -13,18 +13,26 @@ user_home_path = os.path.expanduser('~')
 
 std_state_delay_df = pd.DataFrame(columns=['End-to-End delay(s)', 'Network Solution', 'Network size'])
 convergence_delay_df = pd.DataFrame(columns=['End-to-End delay(s)', 'Network Solution', 'Network size'])
-convergence_df = pd.DataFrame(columns=['Convergence time (s)', 'Network Solution', 'Network size'])
+flow_config_time_df = pd.DataFrame(columns=['Flow configuration time(s)', 'Network Solution', 'Network size'])
+convergence_df = pd.DataFrame(columns=['Convergence time(s)', 'Network Solution', 'Network size'])
 ts_num_df = pd.DataFrame(columns=['Normalized scheduled cells', 'Network Solution', 'Network size'])
+collision_rate_df = pd.DataFrame(columns=['Normalized link quality estimation', 'Network Solution', 'Network size'])
+energy_consumption_joined_df = pd.DataFrame(columns=['Energy consumption (mJ)', 'Network Solution', 'Network size'])
+energy_consumption_bootstrap_df = pd.DataFrame(columns=['Energy consumption (mJ)', 'Network Solution', 'Network size'])
 pdr_df = pd.DataFrame(columns=['PDR(%) before deadline', 'Network Solution', 'Network size'])
 num_tx_df = pd.DataFrame(columns=['Number of TX+RTX', 'Network Solution', 'Network size'])
 cause_rtx_df = pd.DataFrame(columns=['Packet_tx_fail', 'Ack_tx_fail', 'Network size'])
 sf_max_cell_usage_df = pd.DataFrame(columns=['Max cell usage per SF and node', 'Network Solution', 'Network size'])
 never_used_cell_df = pd.DataFrame(columns=['Number of never used cells', 'Network Solution', 'Network size'])
 
-app_int = 2.51
-net_size_array = [12, 18, 24]
-lqr_array = [0.80]
-simu_len = 1000
+app_int = 5.02
+net_size_array = [30]
+lqr_array = [0.0]
+simu_len = 500
+link_quality_coeff = 0.9025
+sf_rep = 3
+sf_size = 1506
+print_asn = int('0xCF850', 16)
 
 sent_asn_start_sing = 's|as '
 sent_asn_end_sign = ' as|ar'
@@ -61,6 +69,8 @@ flow_resp_asn_sing_end = ']]]]]'
 msf_filename_key = 'msf-net-'
 sdn_filename_key = 'sdn-net-'
 shared_filename_key = 'sharedcp-net-'
+shared_fctrl_filename_key = 'sharedfctrl-net-'
+stupid_filename_key = 'unconteb-net-'
 
 
 sf_ts_num_start_sing = '*** sf_size[['
@@ -498,34 +508,235 @@ def split_converge_time_steady_state(delay_list, node_id_list):
     return list_conv_point
 
 
-def get_convergence_time_sdn_tsch(log_file_name, end_node_id, node_id_list):
+def get_data_flow_configuration_time(log_file_name, end_node_id, node_id_list):
     log_path = user_home_path + "/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log/" + str(log_file_name)
     file = open(log_path, "r")
     input_lines = file.readlines()
     file.close()
-    send_asn = 0
-    receive_asn = 0
     conv_delay_list = []
 
-    for id in node_id_list:
-        for line in input_lines:
+    list_req = [0 for i in range(end_node_id + 1)]
+    list_res = [0 for i in range(end_node_id + 1)]
+
+    for line in input_lines:
+        if flow_req_start_sing in line:
             sender_addr_sing_s = line.find(flow_req_start_sing) + len(flow_req_start_sing)
             sender_addr_sing_e = line.find(flow_req_end_sing)
-            if flow_req_start_sing in line and line[sender_addr_sing_s:sender_addr_sing_e] == ('0' + str(id)):
-                asn_sing_s = line.find(flow_req_asn_sing_start) + len(flow_req_asn_sing_start)
-                asn_sing_e = line.find(flow_req_asn_sing_end)
-                send_asn = int(line[asn_sing_s:asn_sing_e], 16)
+            asn_sing_s = line.find(flow_req_asn_sing_start) + len(flow_req_asn_sing_start)
+            asn_sing_e = line.find(flow_req_asn_sing_end)
+            list_req[int(line[sender_addr_sing_s:sender_addr_sing_e])] = int(line[asn_sing_s:asn_sing_e], 16)
 
+        if flow_resp_start_sing in line:
             receiver_addr_sing_s = line.find(flow_resp_start_sing) + len(flow_resp_start_sing)
             receiver_addr_sing_e = line.find(flow_resp_end_sing)
-            if flow_resp_start_sing in line and line[receiver_addr_sing_s:receiver_addr_sing_e] == ('0' + str(id)):
-                asn_sing_s = line.find(flow_resp_asn_sing_start) + len(flow_resp_asn_sing_start)
-                asn_sing_e = line.find(flow_resp_asn_sing_end)
-                receive_asn = int(line[asn_sing_s:asn_sing_e], 16)
+            asn_sing_s = line.find(flow_resp_asn_sing_start) + len(flow_resp_asn_sing_start)
+            asn_sing_e = line.find(flow_resp_asn_sing_end)
+            list_res[int(line[receiver_addr_sing_s:receiver_addr_sing_e])] = int(line[asn_sing_s:asn_sing_e], 16)
 
-        conv_delay_list.append((receive_asn - send_asn) * 10)
+    for i in range(1, end_node_id + 1):
+        if list_res[i] - list_req[i] > 0:
+            conv_delay_list.append((list_res[i] - list_req[i]) * 10)
 
     return conv_delay_list
+
+
+def get_sdn_convergence_time(log_file_name):
+    log_path = user_home_path + "/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log/" + str(log_file_name)
+    file = open(log_path, "r")
+    input_lines = file.readlines()
+    file.close()
+    key1 = 'Start with TSCH and SDN at ASN: '
+    key2 = ' ]'
+    last_asn = 0
+    # TODO: for the MSF I should consider the tim in which nodes sends its first packet
+    for line in input_lines:
+        if key1 in line:
+            s = line.find(key1) + len(key1)
+            e = line.find(key2)
+            if int(line[s:e], 16) > last_asn:
+                last_asn = int(line[s:e], 16)
+
+    return last_asn/100
+
+
+def get_collision_rate(log_file_name):
+    log_path = user_home_path + "/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log/" + str(log_file_name)
+    file = open(log_path, "r")
+    input_lines = file.readlines()
+    file.close()
+    est_link_sign1 = 'est_pdr_l['
+    est_link_sign2 = '] idl_cell['
+    ideal_link_sign1 = '] idl_pdr_l['
+    ideal_link_sign2 = ']]'
+
+    list_of_collision = []
+    for line in input_lines:
+        if est_link_sign1 in line:
+            s = line.find(est_link_sign1) + len(est_link_sign1)
+            e = line.find(est_link_sign2)
+            est_link = float(line[s:e].replace(",", "."))
+
+            s = line.find(ideal_link_sign1) + len(ideal_link_sign1)
+            e = line.find(ideal_link_sign2)
+            list_of_collision.append((est_link / link_quality_coeff) / float(line[s:e].replace(",", ".")))
+
+    return list_of_collision
+
+
+def get_energy_consumption(log_file_name, net_size, solution_name):
+    log_path = user_home_path + "/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log/" + str(log_file_name)
+    file = open(log_path, "r")
+    input_lines = file.readlines()
+    file.close()
+    # curr: current in mA
+    voltage = 3
+    cpu_curr = 1.8      # mA
+    lpm_curr = 0.0545   # mA
+    tx_curr = 17.7      # mA
+    rx_curr = 20        # mA
+
+    key_before_join = 'ENGY before join->ID['
+    key_after_join = 'ENGY after join->ID['
+    key_cup = '] CPU:'
+    key_lpm = 's LPM:'
+    key_rx = 's Radio LISTEN:'
+    key_tx = 's TRANSMIT:'
+    key_end = 's OFF:'
+    key_rx_cell1 = 'install rx cells: node['
+    key_rx_cell2 = '], flow id['
+    key_rx_cell3 = '], num cell['
+    key_rx_cell4 = '], asn['
+    key_rx_cell5 = ']]'
+
+    before_join_list = [[0 for j in range(3)] for i in range(net_size + 1)]
+    after_join_list = [[0 for j in range(3)] for i in range(net_size + 1)]
+    energy_list_after_join = []
+    energy_list_before_join = []
+    idle_energy_list = [0 for i in range(net_size + 1)]
+
+    for line in input_lines:
+        if key_before_join in line:
+            s = line.find(key_before_join) + len(key_before_join)
+            e = line.find(key_cup)
+            node_id = int(line[s:e])
+
+            s = line.find(key_cup) + len(key_cup)
+            e = line.find(key_lpm)
+            before_join_list[node_id][0] = int(line[s:e])
+
+            s = line.find(key_rx) + len(key_rx)
+            e = line.find(key_tx)
+            before_join_list[node_id][1] = int(line[s:e])
+
+            s = line.find(key_tx) + len(key_tx)
+            e = line.find(key_end)
+            before_join_list[node_id][2] = int(line[s:e])
+
+        if key_after_join in line:
+            s = line.find(key_after_join) + len(key_after_join)
+            e = line.find(key_cup)
+            node_id = int(line[s:e])
+
+            s = line.find(key_cup) + len(key_cup)
+            e = line.find(key_lpm)
+            after_join_list[node_id][0] = int(line[s:e])
+
+            s = line.find(key_rx) + len(key_rx)
+            e = line.find(key_tx)
+            after_join_list[node_id][1] = int(line[s:e])
+
+            s = line.find(key_tx) + len(key_tx)
+            e = line.find(key_end)
+            after_join_list[node_id][2] = int(line[s:e])
+
+        if key_rx_cell1 in line:
+            s = line.find(key_rx_cell1) + len(key_rx_cell1)
+            e = line.find(key_rx_cell2)
+            rx_node_id = int(line[s:e])
+
+            s = line.find(key_rx_cell2) + len(key_rx_cell2)
+            e = line.find(key_rx_cell3)
+            if int(line[s:e]) > 8:
+                ss = line.find(key_rx_cell3) + len(key_rx_cell3)
+                ee = line.find(key_rx_cell4)
+                rx_cell = int(line[ss:ee])
+                ss = line.find(key_rx_cell4) + len(key_rx_cell4)
+                ee = line.find(key_rx_cell5)
+                asn = int(line[ss:ee], 16)
+                idle_energy_list[rx_node_id] += (((print_asn - asn) / sf_size) * rx_cell) * 0.0026
+
+
+    print('idle energy list: ', idle_energy_list)
+    for i in range(1, net_size + 1):
+        cpu_time = after_join_list[i][0] - before_join_list[i][0]
+        rx_time = after_join_list[i][1] - before_join_list[i][1] #- idle_energy_list[i]
+        tx_time = after_join_list[i][2] - before_join_list[i][2]
+        print('Time after join: node:', i, 'cpu_time:', cpu_time, 'rx_time:', rx_time, 'tx_time:', tx_time)
+        energy_list_after_join.append((cpu_time * cpu_curr + rx_time * rx_curr + tx_time * tx_curr) * voltage)
+        print('Energy after join: ', 'cpu:', cpu_time * cpu_curr, 'rx:', rx_time * rx_curr, 'tx:', tx_time * tx_curr)
+
+    for i in range(1, net_size + 1):
+        cpu_time = before_join_list[i][0]
+        rx_time = before_join_list[i][1]
+        tx_time = before_join_list[i][2]
+        print('Time before join: ', 'cpu_time:', cpu_time, 'rx_time:', rx_time, 'tx_time:', tx_time)
+        energy_list_before_join.append((cpu_time * cpu_curr + rx_time * rx_curr + tx_time * tx_curr) * voltage)
+        print('Energy before join: ', 'cpu:', cpu_time * cpu_curr, 'rx:', rx_time * rx_curr, 'tx:', tx_time * tx_curr)
+
+    print('energy_list: ', energy_list_after_join, energy_list_before_join)
+
+    return energy_list_after_join, energy_list_before_join
+
+
+def get_control_cells(log_file_name, net_size, solution_name):
+    log_path = user_home_path + "/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log/" + str(log_file_name)
+    file = open(log_path, "r")
+    input_lines = file.readlines()
+    file.close()
+    parent_key = 'CONTROLLER: specify parent addr '
+    shared_cell_key2 = ', sdn_num_shared_cell_in_rep:'
+    shared_cell_key1 = 'sdn_num_shared_cell: '
+    tot_cell = 0
+
+    for line in input_lines:
+        if shared_cell_key2 in line:
+            s = line.find(shared_cell_key1) + len(shared_cell_key1)
+            e = line.find(shared_cell_key2)
+            tot_cell = tot_cell + (int(line[s:e]) * net_size)
+            print("tot cell 1: ", tot_cell)
+            break
+
+    if solution_name == stupid_filename_key:
+        tot_cell = ((net_size - 1) * 2 * sf_rep) + tot_cell
+
+        fc_list = [0 for i in range(net_size + 1)]
+        for line in input_lines:
+            if parent_key in line:
+                s = line.find(parent_key) + len(parent_key)
+                e = s + 4
+                fc_list[int(line[s:e], 16)] = fc_list[int(line[s:e], 16)] + 1
+        for item in fc_list:
+            if item != 0:
+                tot_cell = item + 1 + tot_cell
+
+    if solution_name == sdn_filename_key:
+        tot_cell = ((net_size - 1) * 2 * sf_rep) + tot_cell
+
+        fc_list = [0 for i in range(net_size + 1)]
+        for line in input_lines:
+            if parent_key in line:
+                s = line.find(parent_key) + len(parent_key)
+                e = s + 4
+                fc_list[int(line[s:e], 16)] = fc_list[int(line[s:e], 16)] + 1
+        for item in fc_list:
+            if item != 0:
+                tot_cell = item + 1 + tot_cell
+
+    if solution_name == shared_fctrl_filename_key:
+        tot_cell = ((net_size - 1) * 2 * sf_rep) + tot_cell
+
+    return tot_cell
+
 
 def main_func_plot():
     for i in net_size_array:
@@ -537,14 +748,14 @@ def main_func_plot():
 
                 for nd_pdr in pdr:
                     if not (nd_pdr is None):
-                        temp_pdr = [nd_pdr, 'MSF(LQR ' + str(math.floor(m * m * 100)) + '%)', i]
+                        temp_pdr = [nd_pdr, 'MSF', i]
                         df_pdr_len = len(pdr_df)
                         pdr_df.loc[df_pdr_len] = temp_pdr
 
                 for delay in std_delay:
                     for pa_delay in delay:
                         if not (pa_delay is None):
-                            temp_std_delay = [pa_delay / 1000, 'MSF(LQR ' + str(math.floor(m * m * 100)) + '%)', i]
+                            temp_std_delay = [pa_delay / 1000, 'MSF', i]
                             df_cp_len = len(std_state_delay_df)
                             std_state_delay_df.loc[df_cp_len] = temp_std_delay
 
@@ -556,9 +767,9 @@ def main_func_plot():
                 delay_lists, node_id_list2 = msf_e2e_delay(j, i)
                 conv_point = split_converge_time_steady_state(delay_lists, node_id_list2)
                 for item in conv_point:
-                    temp_conv_point = [item * app_int, 'MSF(LQR '+str(math.floor(m * m * 100))+'%)', i]
-                    df_cp_len = len(convergence_df)
-                    convergence_df.loc[df_cp_len] = temp_conv_point
+                    temp_conv_point = [item * app_int, 'MSF', i]
+                    df_cp_len = len(flow_config_time_df)
+                    flow_config_time_df.loc[df_cp_len] = temp_conv_point
 
         # SDN dedicated control plane
         sdn_net_log_list = get_list_of_log_file(sdn_filename_key + str(i), log_list)
@@ -572,7 +783,7 @@ def main_func_plot():
                 #     print('problematic log: ' + str(j))
                 for nd_pdr in pdr:
                     if not (nd_pdr is None):
-                        temp_pdr = [nd_pdr, 'SDN-TSCH(LQR '+str(math.floor(m * m*100))+'%)', i]
+                        temp_pdr = [nd_pdr, 'SDN-TSCH', i]
                         df_pdr_len = len(pdr_df)
                         pdr_df.loc[df_pdr_len] = temp_pdr
                         if nd_pdr < 50:
@@ -581,17 +792,17 @@ def main_func_plot():
                 for delay in std_delay:
                     for pa_delay in delay:
                         if not (pa_delay is None):
-                            temp_std_delay = [pa_delay / 1000, 'SDN-TSCH(LQR ' + str(math.floor(m * m * 100)) + '%)', i]
+                            temp_std_delay = [pa_delay / 1000, 'SDN-TSCH', i]
                             df_cp_len = len(std_state_delay_df)
                             std_state_delay_df.loc[df_cp_len] = temp_std_delay
 
-                conv_time = get_convergence_time_sdn_tsch(j, i, node_id_list)
+                conv_time = get_data_flow_configuration_time(j, i, node_id_list)
                 for item in conv_time:
                     if item != 0:
                         print('converg time: ', item/1000)
-                        temp_conv_point = [item/1000, 'SDN-TSCH(LQR '+str(math.floor(m * m*100))+'%)', i]
-                        df_cp_len = len(convergence_df)
-                        convergence_df.loc[df_cp_len] = temp_conv_point
+                        temp_conv_point = [item/1000, 'SDN-TSCH', i]
+                        df_cp_len = len(flow_config_time_df)
+                        flow_config_time_df.loc[df_cp_len] = temp_conv_point
 
         # SDN shared control plane
         sdn_net_log_list = get_list_of_log_file(shared_filename_key + str(i), log_list)
@@ -605,7 +816,7 @@ def main_func_plot():
                 #     print('problematic log: ' + str(j))
                 for nd_pdr in pdr:
                     if not (nd_pdr is None) and nd_pdr > 95:
-                        temp_pdr = [nd_pdr, 'SDN-TSCH-SCP(LQR ' + str(math.floor(m * m * 100)) + '%)', i]
+                        temp_pdr = [nd_pdr, 'SDN-TSCH-SHARED_CON.PLANE', i]
                         df_pdr_len = len(pdr_df)
                         pdr_df.loc[df_pdr_len] = temp_pdr
                         if nd_pdr < 50:
@@ -615,17 +826,93 @@ def main_func_plot():
                     # print('flow delay list: ', delay)
                     for pa_delay in delay:
                         if not (pa_delay is None):
-                            temp_std_delay = [pa_delay / 1000, 'SDN-TSCH-SCP(LQR ' + str(math.floor(m * m * 100)) + '%)', i]
+                            temp_std_delay = [pa_delay / 1000, 'SDN-TSCH-SHARED_CON.PLANE', i]
                             df_cp_len = len(std_state_delay_df)
                             std_state_delay_df.loc[df_cp_len] = temp_std_delay
 
-                conv_time = get_convergence_time_sdn_tsch(j, i, node_id_list)
+                conv_time = get_data_flow_configuration_time(j, i, node_id_list)
                 for item in conv_time:
                     if item != 0:
                         print('converg time shared cp : ', item/1000)
-                        temp_conv_point = [item / 1000, 'SDN-TSCH-SCP(LQR ' + str(math.floor(m * m * 100)) + '%)', i]
-                        df_cp_len = len(convergence_df)
-                        convergence_df.loc[df_cp_len] = temp_conv_point
+                        temp_conv_point = [item / 1000, 'SDN-TSCH-SHARED_CON.PLANE', i]
+                        df_cp_len = len(flow_config_time_df)
+                        flow_config_time_df.loc[df_cp_len] = temp_conv_point
+
+        # SDN shared from controller
+        sdn_net_log_list = get_list_of_log_file(shared_fctrl_filename_key + str(i), log_list)
+        for m in lqr_array:
+            sdn_lqr_log_list = get_list_of_log_file(str(m), sdn_net_log_list)
+            for j in sdn_lqr_log_list:
+                std_delay, pdr, node_id_list = e2e_delay(j, i)
+                print(node_id_list)
+                # print(std_delay)
+                # if all(s is None for s in delay_array[980:999]):
+                #     print('problematic log: ' + str(j))
+                for nd_pdr in pdr:
+                    if not (nd_pdr is None) and nd_pdr > 95:
+                        temp_pdr = [nd_pdr, 'SDN-TSCH-SHARED_FROM.CON',
+                                    i]
+                        df_pdr_len = len(pdr_df)
+                        pdr_df.loc[df_pdr_len] = temp_pdr
+                        if nd_pdr < 50:
+                            print('low pdr:  ---> ' + str(j) + '  "PDR = ' + str(nd_pdr) + '"')
+
+                for delay in std_delay:
+                    # print('flow delay list: ', delay)
+                    for pa_delay in delay:
+                        if not (pa_delay is None):
+                            temp_std_delay = [pa_delay / 1000,
+                                              'SDN-TSCH-SHARED_FROM.CON',
+                                              i]
+                            df_cp_len = len(std_state_delay_df)
+                            std_state_delay_df.loc[df_cp_len] = temp_std_delay
+
+                conv_time = get_data_flow_configuration_time(j, i, node_id_list)
+                for item in conv_time:
+                    if item != 0:
+                        print('converg time shared FC : ', item / 1000)
+                        temp_conv_point = [item / 1000,
+                                           'SDN-TSCH-SHARED_FROM.CON', i]
+                        df_cp_len = len(flow_config_time_df)
+                        flow_config_time_df.loc[df_cp_len] = temp_conv_point
+
+        # SDN stupid solution: uncontrolled EB trnas.
+        sdn_net_log_list = get_list_of_log_file(stupid_filename_key + str(i), log_list)
+        for m in lqr_array:
+            sdn_lqr_log_list = get_list_of_log_file(str(m), sdn_net_log_list)
+            for j in sdn_lqr_log_list:
+                std_delay, pdr, node_id_list = e2e_delay(j, i)
+                print(node_id_list)
+                # print(std_delay)
+                # if all(s is None for s in delay_array[980:999]):
+                #     print('problematic log: ' + str(j))
+                for nd_pdr in pdr:
+                    if not (nd_pdr is None) and nd_pdr > 95:
+                        temp_pdr = [nd_pdr, 'SDN-TSCH-SHARED-EB',
+                                    i]
+                        df_pdr_len = len(pdr_df)
+                        pdr_df.loc[df_pdr_len] = temp_pdr
+                        if nd_pdr < 50:
+                            print('low pdr:  ---> ' + str(j) + '  "PDR = ' + str(nd_pdr) + '"')
+
+                for delay in std_delay:
+                    # print('flow delay list: ', delay)
+                    for pa_delay in delay:
+                        if not (pa_delay is None):
+                            temp_std_delay = [pa_delay / 1000,
+                                              'SDN-TSCH-SHARED-EB',
+                                              i]
+                            df_cp_len = len(std_state_delay_df)
+                            std_state_delay_df.loc[df_cp_len] = temp_std_delay
+
+                conv_time = get_data_flow_configuration_time(j, i, node_id_list)
+                for item in conv_time:
+                    if item != 0:
+                        print('converg time shared EB : ', item / 1000)
+                        temp_conv_point = [item / 1000,
+                                           'SDN-TSCH-SHARED-EB', i]
+                        df_cp_len = len(flow_config_time_df)
+                        flow_config_time_df.loc[df_cp_len] = temp_conv_point
 
                     # if std_delay/1000 > 2:
                     #     print('SDN large delay:  ' + str(j))
@@ -640,14 +927,14 @@ def main_func_plot():
             for j in msf_lqr_log_list:
                 num_sch_ts, num_ideal_cell = msf_get_num_scheduled_ts(j, i, m)
 
-                temp_pdr = [num_sch_ts, 'MSF(LQR ' + str(math.floor(m * m * 100)) + '%)', i]
+                temp_pdr = [num_sch_ts, 'MSF', i]
                 df_pdr_len = len(ts_num_df)
                 ts_num_df.loc[df_pdr_len] = temp_pdr
 
                 cell_usage = get_max_cell_usage_per_sf(j, i)
                 if i == 3 and cell_usage < 8:
                     print('low cell usage: ' + str(j))
-                temp_pdr = [cell_usage, 'MSF(LQR ' + str(math.floor(m * m * 100)) + '%)', i]
+                temp_pdr = [cell_usage, 'MSF', i]
                 df_pdr_len = len(sf_max_cell_usage_df)
                 sf_max_cell_usage_df.loc[df_pdr_len] = temp_pdr
 
@@ -662,12 +949,12 @@ def main_func_plot():
                 never_used_cell, sf_cell_usage = number_of_tx_and_collision(j, i)
 
                 for scu in sf_cell_usage:
-                    temp_pdr = [scu, 'SDN-TSCH(LQR ' + str(math.floor(m * m * 100)) + '%)', i]
+                    temp_pdr = [scu, 'SDN-TSCH', i]
                     df_pdr_len = len(sf_max_cell_usage_df)
                     sf_max_cell_usage_df.loc[df_pdr_len] = temp_pdr
 
                 for ncu in never_used_cell:
-                    temp_pdr = [ncu, 'SDN-TSCH(LQR ' + str(math.floor(m * m * 100)) + '%)', i]
+                    temp_pdr = [ncu, 'SDN-TSCH', i]
                     df_pdr_len = len(never_used_cell_df)
                     never_used_cell_df.loc[df_pdr_len] = temp_pdr
 
@@ -687,11 +974,35 @@ def main_func_plot():
                 # get the number of avg scheduled ts for the network
 
                 num_sch_ts, num_ideal_cell = sdn_get_num_scheduled_ts(j, i)
-                temp_pdr = [num_sch_ts, 'SDN-TSCH(LQR ' + str(math.floor(m * m * 100)) + '%)', i]
+                temp_pdr = [num_sch_ts, 'SDN-TSCH', i]
                 df_pdr_len = len(ts_num_df)
                 ts_num_df.loc[df_pdr_len] = temp_pdr
                 # if num_sch_ts > 20:
                 #     print('Low Schedule problem: ' + str(j))
+                coll_list = get_collision_rate(j)
+                for lq in coll_list:
+                    temp_lq = [lq, 'SDN-TSCH', i]
+                    df_lq_len = len(collision_rate_df)
+                    collision_rate_df.loc[df_lq_len] = temp_lq
+
+                energy_list_after, energy_list_before = get_energy_consumption(j, i, sdn_filename_key)
+                for item in energy_list_after:
+                    if item != 0:
+                        temp_slot = [item, 'SDN-TSCH', i]
+                        df_energy_len = len(energy_consumption_joined_df)
+                        energy_consumption_joined_df.loc[df_energy_len] = temp_slot
+
+                for item in energy_list_before:
+                    if item != 0:
+                        temp_slot = [item, 'SDN-TSCH', i]
+                        df_energy_len = len(energy_consumption_bootstrap_df)
+                        energy_consumption_bootstrap_df.loc[df_energy_len] = temp_slot
+
+                sdn_conv_time = get_sdn_convergence_time(j)
+                if sdn_conv_time != 0:
+                    conv = [sdn_conv_time, 'SDN-TSCH', i]
+                    df_conv_len = len(convergence_df)
+                    convergence_df.loc[df_conv_len] = conv
 
         # SDN shared control plane
         sdn_net_log_list = get_list_of_log_file(shared_filename_key + str(i), log_list)
@@ -704,19 +1015,127 @@ def main_func_plot():
                 never_used_cell, sf_cell_usage = number_of_tx_and_collision(j, i)
 
                 for scu in sf_cell_usage:
-                    temp_pdr = [scu, 'SDN-TSCH-SCP(LQR ' + str(math.floor(m * m * 100)) + '%)', i]
+                    temp_pdr = [scu, 'SDN-TSCH-SHARED_CON.PLANE', i]
                     df_pdr_len = len(sf_max_cell_usage_df)
                     sf_max_cell_usage_df.loc[df_pdr_len] = temp_pdr
 
                 for ncu in never_used_cell:
-                    temp_pdr = [ncu, 'SDN-TSCH-SCP(LQR ' + str(math.floor(m * m * 100)) + '%)', i]
+                    temp_pdr = [ncu, 'SDN-TSCH-SHARED_CON.PLANE', i]
                     df_pdr_len = len(never_used_cell_df)
                     never_used_cell_df.loc[df_pdr_len] = temp_pdr
 
                 num_sch_ts, num_ideal_cell = sdn_get_num_scheduled_ts(j, i)
-                temp_pdr = [num_sch_ts, 'SDN-TSCH-SCP(LQR ' + str(math.floor(m * m * 100)) + '%)', i]
+                temp_pdr = [num_sch_ts, 'SDN-TSCH-SHARED_CON.PLANE', i]
                 df_pdr_len = len(ts_num_df)
                 ts_num_df.loc[df_pdr_len] = temp_pdr
+
+                energy_list_after, energy_list_before = get_energy_consumption(j, i, shared_filename_key)
+                for item in energy_list_after:
+                    if item != 0:
+                        temp_slot = [item, 'SDN-TSCH-SHARED_CON.PLANE', i]
+                        df_energy_len = len(energy_consumption_joined_df)
+                        energy_consumption_joined_df.loc[df_energy_len] = temp_slot
+
+                for item in energy_list_before:
+                    if item != 0:
+                        temp_slot = [item, 'SDN-TSCH-SHARED_CON.PLANE', i]
+                        df_energy_len = len(energy_consumption_bootstrap_df)
+                        energy_consumption_bootstrap_df.loc[df_energy_len] = temp_slot
+
+                sdn_conv_time = get_sdn_convergence_time(j)
+                if sdn_conv_time != 0:
+                    conv = [sdn_conv_time, 'SDN-TSCH-SHARED_CON.PLANE', i]
+                    df_conv_len = len(convergence_df)
+                    convergence_df.loc[df_conv_len] = conv
+
+        # SDN shared from controller
+        sdn_net_log_list = get_list_of_log_file(shared_fctrl_filename_key + str(i), log_list)
+        for m in lqr_array:
+            sdn_lqr_log_list = get_list_of_log_file(str(m), sdn_net_log_list)
+            for j in sdn_lqr_log_list:
+                never_used_cell, sf_cell_usage = number_of_tx_and_collision(j, i)
+
+                for scu in sf_cell_usage:
+                    temp_pdr = [scu, 'SDN-TSCH-SHARED_FROM.CON', i]
+                    df_pdr_len = len(sf_max_cell_usage_df)
+                    sf_max_cell_usage_df.loc[df_pdr_len] = temp_pdr
+
+                for ncu in never_used_cell:
+                    temp_pdr = [ncu, 'SDN-TSCH-SHARED_FROM.CON', i]
+                    df_pdr_len = len(never_used_cell_df)
+                    never_used_cell_df.loc[df_pdr_len] = temp_pdr
+
+                num_sch_ts, num_ideal_cell = sdn_get_num_scheduled_ts(j, i)
+                temp_pdr = [num_sch_ts, 'SDN-TSCH-SHARED_FROM.CON', i]
+                df_pdr_len = len(ts_num_df)
+                ts_num_df.loc[df_pdr_len] = temp_pdr
+
+                energy_list_after, energy_list_before = get_energy_consumption(j, i, shared_fctrl_filename_key)
+                for item in energy_list_after:
+                    if item != 0:
+                        temp_slot = [item, 'SDN-TSCH-SHARED_FROM.CON', i]
+                        df_energy_len = len(energy_consumption_joined_df)
+                        energy_consumption_joined_df.loc[df_energy_len] = temp_slot
+
+                for item in energy_list_before:
+                    if item != 0:
+                        temp_slot = [item, 'SDN-TSCH-SHARED_FROM.CON', i]
+                        df_energy_len = len(energy_consumption_bootstrap_df)
+                        energy_consumption_bootstrap_df.loc[df_energy_len] = temp_slot
+
+                sdn_conv_time = get_sdn_convergence_time(j)
+                if sdn_conv_time != 0:
+                    conv = [sdn_conv_time, 'SDN-TSCH-SHARED_FROM.CON', i]
+                    df_conv_len = len(convergence_df)
+                    convergence_df.loc[df_conv_len] = conv
+
+        # SDN stupid solution: uncontrolled EB trnas.
+        sdn_net_log_list = get_list_of_log_file(stupid_filename_key + str(i), log_list)
+        for m in lqr_array:
+            sdn_lqr_log_list = get_list_of_log_file(str(m), sdn_net_log_list)
+            for j in sdn_lqr_log_list:
+                never_used_cell, sf_cell_usage = number_of_tx_and_collision(j, i)
+
+                for scu in sf_cell_usage:
+                    temp_pdr = [scu, 'SDN-TSCH-SHARED-EB', i]
+                    df_pdr_len = len(sf_max_cell_usage_df)
+                    sf_max_cell_usage_df.loc[df_pdr_len] = temp_pdr
+
+                for ncu in never_used_cell:
+                    temp_pdr = [ncu, 'SDN-TSCH-SHARED-EB', i]
+                    df_pdr_len = len(never_used_cell_df)
+                    never_used_cell_df.loc[df_pdr_len] = temp_pdr
+
+                num_sch_ts, num_ideal_cell = sdn_get_num_scheduled_ts(j, i)
+                temp_pdr = [num_sch_ts, 'SDN-TSCH-SHARED-EB', i]
+                df_pdr_len = len(ts_num_df)
+                ts_num_df.loc[df_pdr_len] = temp_pdr
+                # if num_sch_ts > 20:
+                #     print('Low Schedule problem: ' + str(j))
+                coll_list = get_collision_rate(j)
+                for lq in coll_list:
+                    temp_lq = [lq, 'SDN-TSCH-SHARED-EB', i]
+                    df_lq_len = len(collision_rate_df)
+                    collision_rate_df.loc[df_lq_len] = temp_lq
+
+                energy_list_after, energy_list_before = get_energy_consumption(j, i, stupid_filename_key)
+                for item in energy_list_after:
+                    if item != 0:
+                        temp_slot = [item, 'SDN-TSCH-SHARED-EB', i]
+                        df_energy_len = len(energy_consumption_joined_df)
+                        energy_consumption_joined_df.loc[df_energy_len] = temp_slot
+
+                for item in energy_list_before:
+                    if item != 0:
+                        temp_slot = [item, 'SDN-TSCH-SHARED-EB', i]
+                        df_energy_len = len(energy_consumption_bootstrap_df)
+                        energy_consumption_bootstrap_df.loc[df_energy_len] = temp_slot
+
+                sdn_conv_time = get_sdn_convergence_time(j)
+                if sdn_conv_time != 0:
+                    conv = [sdn_conv_time, 'SDN-TSCH-SHARED-EB', i]
+                    df_conv_len = len(convergence_df)
+                    convergence_df.loc[df_conv_len] = conv
 
 
 main_func_plot()
@@ -827,13 +1246,15 @@ main_func_plot()
 # # plt.savefig('stack_rtx', bbox_inches='tight')
 #
 
-# # # ################## plot convergence time #######################
-# hue_order = ['MSF(LQR 84.0%)', 'SDN-TSCH(LQR 84.0%)', 'SDN-TSCH-SCP(LQR 84.0%)', 'MSF(LQR 95.0%)', 'SDN-TSCH(LQR 95.0%)', 'SDN-TSCH-SCP(LQR 95.0%)']
-hue_order = ['MSF(LQR 64%)', 'SDN-TSCH(LQR 64%)', 'SDN-TSCH-SCP(LQR 64%)']
+# # # ################## plot flow configuration time #######################
+# hue_order = ['MSF(LQR 84.0%)', 'SDN-TSCH(LQR 84.0%)', 'SDN-TSCH-SHARED_CON.PLANE(LQR 84.0%)', 'MSF(LQR 95.0%)', 'SDN-TSCH(LQR 95.0%)', 'SDN-TSCH-SHARED_CON.PLANE(LQR 95.0%)']
+hue_order = ['MSF', 'SDN-TSCH', 'SDN-TSCH-SHARED-EB', 'SDN-TSCH-SHARED_FROM.CON', 'SDN-TSCH-SHARED_CON.PLANE']
+hue_order_coll_rate = ['SDN-TSCH', 'SDN-TSCH-SHARED-EB']
+
 
 sns.set(font_scale=3.2)
 sns.set_style({'font.family': 'serif'})
-ax_sdn_pdr = sns.catplot(kind='violin', data=convergence_df, x='Network size', y='Convergence time (s)',
+ax_sdn_pdr = sns.catplot(kind='violin', data=flow_config_time_df, x='Network size', y='Flow configuration time(s)',
                          hue='Network Solution', hue_order=hue_order, palette="tab10", cut=0, scale='width',
                          saturation=1, legend=False, height=10, aspect=1.8)
 #ax_sdn_pdr.set(ylim=(0, 102))
@@ -843,7 +1264,7 @@ plt.yscale('log')
 # plt.yticks(range(0,110,20))
 # ax_sdn_pdr.fig.set_figwidth(20)
 # ax_sdn_pdr.fig.set_figheight(10)
-plt.savefig('Convergence_time.pdf', bbox_inches='tight')
+plt.savefig('flow-config-time.pdf', bbox_inches='tight')
 
 # ################## plot std state delay #######################
 sns.set(font_scale=3.2)
@@ -941,6 +1362,66 @@ plt.legend(loc='upper center', ncol=2, fontsize='24', bbox_to_anchor=[0.5, 1.25]
 # ax_sdn_pdr.fig.set_figwidth(20)
 # ax_sdn_pdr.fig.set_figheight(10)
 plt.savefig('never_cell.pdf', bbox_inches='tight')
+# # ################## plot collision rate #######################
+sns.set(font_scale=3.2)
+sns.set_style({'font.family': 'serif'})
+ax_sdn_pdr = sns.catplot(kind='violin', data=collision_rate_df, x='Network size', y='Normalized link quality estimation',
+                         hue='Network Solution', palette="tab10", cut=0, scale='width',
+                         saturation=1, legend=False, height=10, aspect=1.8)
+# ax_sdn_pdr.set(ylim=(0, 102))
+# plt.subplots_adjust(top=.8)
+plt.legend(loc='upper center', ncol=2, fontsize='24', bbox_to_anchor=[0.5, 1.25])
+# plt.yticks(range(0,110,20))
+# ax_sdn_pdr.fig.set_figwidth(20)
+# ax_sdn_pdr.fig.set_figheight(10)
+plt.axhline(y=1, color='r', linestyle='--')
+# plt.text(1, 2.54, horizontalalignment='center', verticalalignment='bottom', fontsize='24', color='r')
+plt.savefig('coll_rate.pdf', bbox_inches='tight')
+# # ################## plot energy consumption joined #######################
+sns.set(font_scale=3.2)
+sns.set_style({'font.family': 'serif'})
+ax_sdn_pdr = sns.catplot(kind='violin', data=energy_consumption_joined_df, x='Network size', y='Energy consumption (mJ)',
+                         hue='Network Solution', palette="tab10", cut=0, scale='width',
+                         saturation=1, legend=False, height=10, aspect=1.8)
+# ax_sdn_pdr.set(ylim=(0, 102))
+# plt.subplots_adjust(top=.8)
+plt.legend(loc='upper center', ncol=2, fontsize='24', bbox_to_anchor=[0.5, 1.25])
+# plt.yticks(range(0,110,20))
+# ax_sdn_pdr.fig.set_figwidth(20)
+# ax_sdn_pdr.fig.set_figheight(10)
+#plt.axhline(y=1, color='r', linestyle='--')
+# plt.text(1, 2.54, horizontalalignment='center', verticalalignment='bottom', fontsize='24', color='r')
+plt.savefig('energy-joined.pdf', bbox_inches='tight')
+# # ################## plot energy consumption bootstraping #######################
+sns.set(font_scale=3.2)
+sns.set_style({'font.family': 'serif'})
+ax_sdn_pdr = sns.catplot(kind='violin', data=energy_consumption_bootstrap_df, x='Network size', y='Energy consumption (mJ)',
+                         hue='Network Solution', palette="tab10", cut=0, scale='width',
+                         saturation=1, legend=False, height=10, aspect=1.8)
+# ax_sdn_pdr.set(ylim=(0, 102))
+# plt.subplots_adjust(top=.8)
+plt.legend(loc='upper center', ncol=2, fontsize='24', bbox_to_anchor=[0.5, 1.25])
+# plt.yticks(range(0,110,20))
+# ax_sdn_pdr.fig.set_figwidth(20)
+# ax_sdn_pdr.fig.set_figheight(10)
+#plt.axhline(y=1, color='r', linestyle='--')
+# plt.text(1, 2.54, horizontalalignment='center', verticalalignment='bottom', fontsize='24', color='r')
+plt.savefig('energy-boot.pdf', bbox_inches='tight')
+# # ################## plot conv_time #######################
+sns.set(font_scale=3.2)
+sns.set_style({'font.family': 'serif'})
+ax_sdn_pdr = sns.catplot(kind='violin', data=convergence_df, x='Network size', y='Convergence time(s)',
+                         hue='Network Solution', palette="tab10", cut=0, scale='width',
+                         saturation=1, legend=False, height=10, aspect=1.8)
+# ax_sdn_pdr.set(ylim=(0, 102))
+# plt.subplots_adjust(top=.8)
+plt.legend(loc='upper center', ncol=2, fontsize='24', bbox_to_anchor=[0.5, 1.25])
+# plt.yticks(range(0,110,20))
+# ax_sdn_pdr.fig.set_figwidth(20)
+# ax_sdn_pdr.fig.set_figheight(10)
+#plt.axhline(y=1, color='r', linestyle='--')
+# plt.text(1, 2.54, horizontalalignment='center', verticalalignment='bottom', fontsize='24', color='r')
+plt.savefig('conv-time.pdf', bbox_inches='tight')
 # # ################################################################
 
 # sns.set(font_scale=3.2)

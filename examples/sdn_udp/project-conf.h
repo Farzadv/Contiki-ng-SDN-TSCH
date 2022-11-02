@@ -69,7 +69,15 @@
 #define TSCH_CONF_INIT_SCHEDULE_FROM_EB 1
 
 #define TSCH_CONF_EB_PERIOD (1506 * CLOCK_SECOND / 100)
-#define TSCH_CONF_KEEPALIVE_TIMEOUT (30 * CLOCK_SECOND)
+#define TSCH_CONF_KEEPALIVE_TIMEOUT (40 * CLOCK_SECOND)
+
+/* just in the case we use the uncontrolled EB sending we increase the leaving parameters -> we have high collision */ 
+/*
+#if SDN_CONF_UNCONTROLLED_EB_SENDING
+#define TSCH_CONF_KEEPALIVE_TIMEOUT (50 * CLOCK_SECOND)
+#define TSCH_CONF_DESYNC_THRESHOLD  (4 * TSCH_MAX_KEEPALIVE_TIMEOUT)
+#endif
+*/
 
 #define TSCH_SCHEDULE_CONF_MAX_LINKS  1500
 /* I add the following line to enable sender node to pars enhanced ACK 
@@ -98,14 +106,18 @@
 /*******************************************************/
 /******************* Configure SDN  ********************/
 /*******************************************************/
+#define SDN_PRINT_ASN    0xCF850
 #define SDN_CONF_ENABLE 1
-#define SDN_CONF_SHARE_SLOT_POSITION 1 // if =1 -> node fine shared slots positions. if =0 -> just minimal schedule 
+#define SDN_CONF_SHARE_SLOT_POSITION 1                      // if =1 -> node fine shared slots positions. if =0 -> just minimal schedule 
 #define SDN_CONF_NBR_TABLE 1
 #define SDN_CONF_LINK_METRIC EB_NUM
 #define SDN_CONF_REPORT_PERIOD   (20 * 1506 / 100)          // = 150 sec
-//#define SDN_CONF_NUM_SHARED_CELL_IN_REP  20   // num shared cells per sub-SF repetition
-//#define SDN_CONF_SHARED_CONTROL_PLANE   0 
+//#define SDN_CONF_NUM_SHARED_CELL_IN_REP  20               // num shared cells per sub-SF repetition
+//#define SDN_CONF_SHARED_CONTROL_PLANE       1 
 //#define SDN_CONF_SHARED_FROM_CTRL_FLOW    1
+//#define SDN_CONF_UNCONTROLLED_EB_SENDING    1
+
+#define ENERGEST_CONF_ON 1
 
 /* SDN LOG Level */
 #define SDN_LOG_LEVEL                  LOG_LEVEL_INFO

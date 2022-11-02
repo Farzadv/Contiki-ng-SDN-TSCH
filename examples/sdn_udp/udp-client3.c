@@ -7,6 +7,7 @@
 #include "net/ipv6/simple-udp.h"
 
 #include "net/mac/tsch/tsch.h"
+#include "sys/energest.h"
 #include "net/mac/tsch/sdn/sdn.h"
 #include "net/mac/tsch/sdn/sdn-conf.h"
 #include "net/mac/tsch/sdn/sdn-handle.h"
@@ -42,8 +43,14 @@ static int print_schedule = 0;
 static uint16_t first_timeslot;
 /*---------------------------------------------------------------------------*/
 PROCESS(udp_client_process, "UDP client");
-PROCESS(seqnum_reset_process, "seqnum reset process");
-AUTOSTART_PROCESSES(&udp_client_process, &seqnum_reset_process);
+//PROCESS(seqnum_reset_process, "seqnum reset process");
+AUTOSTART_PROCESSES(&udp_client_process);
+/*---------------------------------------------------------------------------*/
+static inline unsigned long
+to_seconds(uint64_t time)
+{
+  return (unsigned long)(time / ENERGEST_SECOND);
+}
 /*---------------------------------------------------------------------------*/
 static void
 udp_rx_callback(struct simple_udp_connection *c,
@@ -118,7 +125,23 @@ PROCESS_THREAD(udp_client_process, ev, data)
     }
   }
       
+  
+  /* print energy until joining to SDN */
+  energest_flush();
 
+  printf("\nENGY before join->ID[%d%d]", linkaddr_node_addr.u8[0], linkaddr_node_addr.u8[1]);
+  printf(" CPU:%lus LPM:%lus DEEPLPM:%lus Tot_time: %lus",
+           to_seconds(energest_type_time(ENERGEST_TYPE_CPU)),
+           to_seconds(energest_type_time(ENERGEST_TYPE_LPM)),
+           to_seconds(energest_type_time(ENERGEST_TYPE_DEEP_LPM)),
+           to_seconds(ENERGEST_GET_TOTAL_TIME()));
+  printf(" Radio LISTEN: %lus TRANSMIT:%lus OFF:%lus ]]\n",
+           to_seconds(energest_type_time(ENERGEST_TYPE_LISTEN)),
+           to_seconds(energest_type_time(ENERGEST_TYPE_TRANSMIT)),
+           to_seconds(ENERGEST_GET_TOTAL_TIME()
+                      - energest_type_time(ENERGEST_TYPE_TRANSMIT)
+                      - energest_type_time(ENERGEST_TYPE_LISTEN)));
+  
   first_timeslot = sdn_find_first_timeslot_in_slotframe(&udp_conn.udp_conn->flow_id);
   printf("first timeslot in sf: %d, rep_period: %d \n", first_timeslot, udp_conn.udp_conn->rep_period);
   
@@ -163,22 +186,42 @@ PROCESS_THREAD(udp_client_process, ev, data)
       msg[9] = (tsch_current_asn.ls4b >> 24)& 0xFF;
       
       
+      
       udp_conn.udp_conn->app_seq = count;
       linkaddr_copy(&udp_conn.udp_conn->app_src_lladdr, &linkaddr_node_addr);
       linkaddr_copy(&udp_conn.udp_conn->app_dest_lladdr, &app_dest);
       
+      
+      //printf("msg %d \n ", msg[4]);
+      //count = msg[3];
       simple_udp_sendto(&udp_conn, msg, sizeof(msg), &server_ipaddr);
       
       count++;
       if(count == 300){
         tsch_print_nbr_table();
       }
-      if(tsch_current_asn.ls4b > 0xBE6E0 && print_schedule == 0) {
+      if(tsch_current_asn.ls4b > SDN_PRINT_ASN && print_schedule == 0) {
         //tsch_schedule_print();
         sdn_schedule_stat_print();
         print_max_sf_cell_usage();
         print_never_used_cell_num();
         print_schedule = 1;
+        
+        /* print energy after joining to SDN */
+        energest_flush();
+
+        printf("\nENGY after join->ID[%d%d]", linkaddr_node_addr.u8[0], linkaddr_node_addr.u8[1]);
+        printf(" CPU:%lus LPM:%lus DEEPLPM:%lus Tot_time:%lus",
+           to_seconds(energest_type_time(ENERGEST_TYPE_CPU)),
+           to_seconds(energest_type_time(ENERGEST_TYPE_LPM)),
+           to_seconds(energest_type_time(ENERGEST_TYPE_DEEP_LPM)),
+           to_seconds(ENERGEST_GET_TOTAL_TIME()));
+        printf(" Radio LISTEN:%lus TRANSMIT:%lus OFF:%lus ]]\n",
+           to_seconds(energest_type_time(ENERGEST_TYPE_LISTEN)),
+           to_seconds(energest_type_time(ENERGEST_TYPE_TRANSMIT)),
+           to_seconds(ENERGEST_GET_TOTAL_TIME()
+                      - energest_type_time(ENERGEST_TYPE_TRANSMIT)
+                      - energest_type_time(ENERGEST_TYPE_LISTEN)));
       }
     //} else {
       //LOG_INFO("Not reachable yet\n");
@@ -201,12 +244,13 @@ PROCESS_THREAD(udp_client_process, ev, data)
       PROCESS_WAIT_UNTIL(etimer_expired(&initial_timer));
       tx_count_in_sf++;
     }
+    
   }
 
   PROCESS_END();
 }
 /*---------------------------------------------------------------------------*/
-PROCESS_THREAD(seqnum_reset_process, ev, data)
+/*PROCESS_THREAD(seqnum_reset_process, ev, data)
 { 
   static int find_asn = 0;
   static struct etimer timer;
@@ -226,7 +270,7 @@ PROCESS_THREAD(seqnum_reset_process, ev, data)
     etimer_reset(&timer);
   }
   PROCESS_END();
-}
+} */
 /*---------------------------------------------------------------------------*/
 
 

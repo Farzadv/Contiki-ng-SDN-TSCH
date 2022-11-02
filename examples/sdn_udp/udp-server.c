@@ -33,6 +33,7 @@
 #include "net/netstack.h"
 #include "net/ipv6/simple-udp.h"
 #include "udp-server.h"
+#include "sys/energest.h"
 #include "net/mac/tsch/sdn/sdn.h"
 #include "net/mac/tsch/sdn/sdn-handle.h"
 #include "net/mac/tsch/sdn/sdn-conf.h"
@@ -56,6 +57,12 @@ static int should_print_sch = 0;
 
 PROCESS(udp_server_process, "UDP server");
 AUTOSTART_PROCESSES(&udp_server_process);
+/*---------------------------------------------------------------------------*/
+static inline unsigned long
+to_seconds(uint64_t time)
+{
+  return (unsigned long)(time / ENERGEST_SECOND);
+}
 /*---------------------------------------------------------------------------*/
 static void
 udp_rx_callback(struct simple_udp_connection *c,
@@ -87,7 +94,7 @@ udp_rx_callback(struct simple_udp_connection *c,
   LOG_INFO("11111111 |sr %d%d sr|d %d%d d|s %u s|as 0x%lx as|ar 0x%lx ar|c %d c|p %d p|", src_addr.u8[0], src_addr.u8[1], dest_addr.u8[0], dest_addr.u8[1], seq_num, sent_asn, tsch_current_asn.ls4b, packetbuf_attr(PACKETBUF_ATTR_CHANNEL), sender_port);
   LOG_INFO_("\n");
   
-  if(!should_print_sch && tsch_current_asn.ls4b > 0xBE6E0) {
+  if(!should_print_sch && tsch_current_asn.ls4b > SDN_PRINT_ASN) {
     //tsch_schedule_print();
     sdn_schedule_stat_print();
     print_max_sf_cell_usage();
@@ -103,6 +110,7 @@ udp_rx_callback(struct simple_udp_connection *c,
   LOG_INFO("Sending response.\n");
   simple_udp_sendto(&udp_conn, data, datalen, sender_addr);
 #endif /* WITH_SERVER_REPLY */
+
 }
 /*----------------------------------veisi-------------------------------------*/
 void
@@ -140,7 +148,7 @@ create_initial_schedule_sink(void)
   int num_rep = (int)(SDN_DATA_SLOTFRAME_SIZE / SDN_SF_REP_PERIOD);
   int num_sh_cell_in_rep = (int)ceil((float)((float)sdn_num_shared_cell / (float)num_rep));
   printf("num_sh_cell_in_rep: %d \n", num_sh_cell_in_rep);
-#define SHARED_CELL_LIST_LEN_TMP  100  
+#define SHARED_CELL_LIST_LEN_TMP  DIST_UNIFORM_LEN  
   const int list_shared_cell_len = (int)(num_sh_cell_in_rep * num_rep);
   static int list_of_shared_cell[SHARED_CELL_LIST_LEN_TMP];
   
@@ -196,6 +204,9 @@ create_initial_schedule_sink(void)
 PROCESS_THREAD(udp_server_process, ev, data)
 {
   PROCESS_BEGIN();
+  
+  static int find_asn = 0;
+  static struct etimer timer;
 
   tsch_set_coordinator(1);
   //NETSTACK_MAC.off();
@@ -212,6 +223,32 @@ PROCESS_THREAD(udp_server_process, ev, data)
                       
   simple_udp_register(&udp_conn, UDP_SERVER_PORT, NULL,
                       UDP_APP2_PORT, udp_rx_callback);
+                      
+  etimer_set(&timer, CLOCK_SECOND/10);
+  while(!find_asn) {
+    PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&timer));
+    if(tsch_current_asn.ls4b > SDN_PRINT_ASN) {
+        //tsch_schedule_print();
+        //count = 1;
+        find_asn = 1;
+    }
+    etimer_reset(&timer);
+  }
+  
+  energest_flush();
+
+  printf("\nENGY after join->ID[%d%d]", linkaddr_node_addr.u8[0], linkaddr_node_addr.u8[1]);
+  printf(" CPU:%lus LPM:%lus DEEPLPM:%lus Tot_time:%lus",
+           to_seconds(energest_type_time(ENERGEST_TYPE_CPU)),
+           to_seconds(energest_type_time(ENERGEST_TYPE_LPM)),
+           to_seconds(energest_type_time(ENERGEST_TYPE_DEEP_LPM)),
+           to_seconds(ENERGEST_GET_TOTAL_TIME()));
+  printf(" Radio LISTEN:%lus TRANSMIT:%lus OFF:%lus ]]\n",
+           to_seconds(energest_type_time(ENERGEST_TYPE_LISTEN)),
+           to_seconds(energest_type_time(ENERGEST_TYPE_TRANSMIT)),
+           to_seconds(ENERGEST_GET_TOTAL_TIME()
+                      - energest_type_time(ENERGEST_TYPE_TRANSMIT)
+                      - energest_type_time(ENERGEST_TYPE_LISTEN)));
 
   PROCESS_END();
 }

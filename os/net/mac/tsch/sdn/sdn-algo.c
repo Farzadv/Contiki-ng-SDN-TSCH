@@ -22,7 +22,7 @@ void dist_non_eb_shared_cells(int num_cell);
 
 
 
-static int non_eb_cell_list[50];
+static int non_eb_cell_list[100];
 /*----------------------------------------------------------------------*/
 void
 dist_non_eb_shared_cells(int num_cell)
@@ -36,7 +36,7 @@ dist_non_eb_shared_cells(int num_cell)
   int empty_space = 1;
   int glob_count = 2;
   int itera = 0;
-  while( empty_space != 0 && itera < 10) {
+  while( empty_space != 0 && itera < 50) {
     itera++;
     int max_empty_space = 0;
     int space_count = 0;
@@ -94,12 +94,12 @@ dist_non_eb_shared_cells(int num_cell)
     }
     //printf(" max space: %d rep: %d \n",max_empty_space, rep_same_space);  
   }
-  /*
+ /* 
   for(i=0; i<list_size; i++) {
     printf(" %d", non_eb_cell_list[i]);
   }  
   printf("\n");
-  */
+ */ 
 }
 /*----------------------------------------------------------------------*/
 struct list_dist_uniform *
@@ -117,6 +117,7 @@ sdn_distribute_list_uniform(struct list_dist_uniform *req_list)
   
   int list_size = req_list->len;
   int list_size_noneb = list_size - NETWORK_SIZE;
+  //printf("SDN-ALGO: list_size: %d, list_size_noneb: %d\n", list_size, list_size_noneb);
   dist_non_eb_shared_cells(list_size_noneb);
   
   int i, j;
@@ -128,7 +129,7 @@ sdn_distribute_list_uniform(struct list_dist_uniform *req_list)
   int empty_space = 1;
   int glob_count = 2;
   int itera = 0;
-  while( empty_space != 0 && itera < 10) {
+  while( empty_space != 0 && itera < 50) {
     itera++;
     int max_empty_space = 0;
     int space_count = 0;

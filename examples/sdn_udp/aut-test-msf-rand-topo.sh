@@ -40,11 +40,11 @@ then
 		rm topo_graph
 fi
 ######################################################################### 
-NODE_NUM_LIST=(12 18 24)                        # network size included Sink
-NODE_CRITIC_NUM=(11 17 23)                       # number of critic nodes
+NODE_NUM_LIST=(43)                        # network size included Sink
+NODE_CRITIC_NUM=(42)                       # number of critic nodes
 BKG_TS_NUM=(1)                           # number of besteffort timeslot that each node has
 ORCH_SF_LEN=(101)                 # orch sf size 
-LQR_LIST=(0.80)
+LQR_LIST=(0.0)
 ITER_PER_CONF=1                           # number of iteration for each config.csc
 SRVR_NUM=1                                # number of server
 
@@ -67,22 +67,23 @@ do
         do
             python3 ~/contiki-ng/examples/sdn_udp/py-config-creator/main.py \
             sf_size=[1506] \
-	    ctrl_sf_size=[30] \
+	    ctrl_sf_size=[60] \
 	    sf_rep_period=[251] \
 	    eb_perid=[15060] \
 	    node_num=[${NODE_NUM_LIST[j]}] \
 	    server_num=[$SRVR_NUM] \
 	    client_bkg_num=[$((${NODE_NUM_LIST[j]}-${NODE_CRITIC_NUM[j]}-SRVR_NUM))] \
             client_critic_num=[${NODE_CRITIC_NUM[j]}] \
-	    bkg_traffic_period=[2510] \
-	    critic_traffic_period=[2510] \
+	    bkg_traffic_period=[5020] \
+	    critic_traffic_period=[5020] \
 	    bkg_timeslot_num=[1] \
-	    tx_range=[50.0] \
-	    intf_range=[100.0] \
+	    tx_range=[100.0] \
+	    intf_range=[150.0] \
 	    tx_success=[1.0] \
 	    rx_success=[${LQR_LIST[k]}] \
-	    x_radius=[$((${NODE_NUM_LIST[j]}*400/100))] \
-	    y_radius=[$((${NODE_NUM_LIST[j]}*400/100))] \
+	    worst_link=[0.85] \
+	    x_radius=[$((${NODE_NUM_LIST[j]}*180/100))] \
+	    y_radius=[$((${NODE_NUM_LIST[j]}*180/100))] \
 	    sim_time_sdn=[10000000] \
 	    sim_time_orch=[3000000] \
 	    itr_num=[$i]   # 50 min sim len and ASN time is 30

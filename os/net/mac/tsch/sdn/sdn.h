@@ -26,7 +26,7 @@ extern int sdn_num_shared_cell_in_rep;
 #endif
 
 
-#define DIST_UNIFORM_LEN      100
+#define DIST_UNIFORM_LEN      400
 struct list_dist_uniform{
   int list[DIST_UNIFORM_LEN];
   uint8_t len;
@@ -35,6 +35,12 @@ struct list_dist_uniform{
 #define SDN_MAX_PAYLOAD     100
 #define FLOW_ID_SIZE        2
 #define CONFIG_CELL_SIZE    3   // 2 byte: timeslot, 1 byte: channel offset
+
+/* max sdn neighbor can be placed in the report packet: 
+   there is filter that takes the best NBRs to report.
+   this value is given to packet size in TSCH */
+#define SDN_MAX_NUM_REPORT_NBR   35
+
 
 /******************** REPORT packet index *********************/
 #define R_SENDER_ADDR_INDEX     0

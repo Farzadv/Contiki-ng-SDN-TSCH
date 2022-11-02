@@ -21,10 +21,11 @@
 #define LOG_LEVEL SDN_SINK_LOG_LEVEL
 
 
-static float POS_ARRAY[24][2] = {{0.0, 0.0}, {-6.75, 23.21}, {-20.75, -32.92}, {44.31, -0.36}, {-8.03, -32.39}, {3.36, -30.53}, {-36.67, -32.58}, {47.87, 12.35}, {41.74, 3.12}, {40.45, 26.43}, {-20.79, 45.8}, {-63.52, -22.01}, {20.25, -48.5}, {-33.19, -60.61}, {7.87, -64.15}, {-48.23, -35.25}, {52.43, -31.95}, {88.56, -6.67}, {35.12, 53.12}, {48.31, 73.52}, {40.59, 70.13}, {-61.86, 24.16}, {-43.01, 60.3}, {38.3, -76.85}};
+static float POS_ARRAY[43][2] = {{0, 0}, {9.12, -36.06}, {-26.73, 27.66}, {22.71, 4.14}, {-19.98, -13.31}, {-15.59, 4.91}, {12.55, 15.9}, {-35.23, -6.45}, {13.41, -14.81}, {20.57, 20.81}, {-25.49, -21.44}, {-25.77, 16.84}, {-6.56, 16.93}, {27.02, -47.05}, {-6.04, -41.93}, {25.2, -39.95}, {-1.0, -46.9}, {17.27, -65.91}, {5.53, -60.18}, {-35.79, 57.72}, {-39.91, 49.28}, {-26.13, 64.71}, {-52.21, 52.12}, {-37.44, 61.16}, {0.87, 53.18}, {-46.6, 11.01}, {-48.11, 24.87}, {-17.29, 52.13}, {-53.49, 23.07}, {51.08, 27.64}, {44.6, 28.7}, {44.81, 29.31}, {40.09, 14.16}, {-43.09, -13.38}, {32.31, 43.15}, {50.7, 38.89}, {-46.93, -44.62}, {-44.31, -48.36}, {-6.33, -73.07}, {-20.64, 72.88}, {-18.8, 69.2}, {67.9, 16.65}, {-49.86, -51.63}};
 
 static linkaddr_t last_flow_id = {{ 0x08, 0x00 }};
 static float coef = 0.5;
+#define ADMIT_FLOW_PDR        0.85    // in the joining process the selected parent must have EB pdr above ADMIT_FLOW_PDR
 //static float coef_link_pdr = 0.9;
 #define GLOBAL_TS_LIST_LEN    SDN_DATA_SLOTFRAME_SIZE
 #define GLOBAL_CH_LIST_LEN    SDN_MAX_CH_OFF_NUM
@@ -139,6 +140,7 @@ specify_parent_from_report(struct sdn_packet* p)
     linkaddr_t addr;
     linkaddr_t parent_addr;
     linkaddr_t sender_addr;
+    float exp_eb_num = ((float)SDN_REPORT_PERIOD / ((float)TSCH_EB_PERIOD/(float)CLOCK_SECOND));
     
     for(j = 0; j< LINKADDR_SIZE; ++j) {
       sender_addr.u8[j] = p->payload[R_SENDER_ADDR_INDEX + j];
@@ -155,6 +157,15 @@ specify_parent_from_report(struct sdn_packet* p)
         //LOG_INFO("CONTROLLER: specify parent 1 \n");
       }
       counter++;
+    }
+    
+    
+    if(((float)(float)nbr_eb_number / exp_eb_num) < ADMIT_FLOW_PDR) {
+      LOG_INFO("CONTROLLER: no qualified parent for node:%d%d : Max NBRs links' quality %f lower than %f \n", sender_addr.u8[0],
+      sender_addr.u8[1], (float)((float)nbr_eb_number / exp_eb_num), ADMIT_FLOW_PDR);
+      return -1;
+    } else {
+      LOG_INFO("CONTROLLER: parent link quality: %f ]\n", (float)((float)nbr_eb_number / exp_eb_num));
     }
     
     if(!linkaddr_cmp(&parent_addr, &linkaddr_null)) {
@@ -703,7 +714,9 @@ allocate_cell_per_hop(int sink_to_dest_num, int dest_to_src_num, struct rsrc_spe
         for(w=0; w<NBR_LIST_LEN; w++) {
           if(linkaddr_cmp(&e2->nbr_list[w].nbr_addr, &addr1)) {
             
-            LOG_ERR("CONTROLLER: EB-num-back: %f, tot eb:%f for hop %d%d \n", e2->nbr_list[w].eb, (float)e2->nbr_list[w].total_eb_num/e2->nbr_list[w].total_report_count, addr2.u8[0], addr2.u8[1]);
+            LOG_ERR("CONTROLLER: EB-num-back: %f, tot eb:%f for hop %d%d \n", e2->nbr_list[w].eb, 
+                                          (float)e2->nbr_list[w].total_eb_num/e2->nbr_list[w].total_report_count,
+                                          addr2.u8[0], addr2.u8[1]);
           
             // start making comment to change the
             /*
@@ -714,14 +727,22 @@ allocate_cell_per_hop(int sink_to_dest_num, int dest_to_src_num, struct rsrc_spe
             }
             */
             // end to make comment
-            
-            revers_direction_pdr = ((float)e2->nbr_list[w].total_eb_num/(float)e2->nbr_list[w].total_report_count)/(float)exp_eb_num;
-            if(revers_direction_pdr > 0.999) {
-              revers_direction_pdr = 0.999;
+            /*
+            if(e2->nbr_list[w].total_eb_num <= 0) {
+              LOG_ERR("CONTROLLER: reject flow: no link estimation exists!\n");
+              return 0;
             }
-            
-            revers_direction_pdr = 0.95 * revers_direction_pdr;
-            //
+            */
+            if(e2->nbr_list[w].total_eb_num > 0) {
+              revers_direction_pdr = ((float)e2->nbr_list[w].total_eb_num/(float)e2->nbr_list[w].total_report_count)/(float)exp_eb_num;
+              if(revers_direction_pdr > 0.999) {
+                revers_direction_pdr = 0.999;
+              }
+              
+              revers_direction_pdr = 0.95 * revers_direction_pdr;
+            } else {
+              revers_direction_pdr = 0;
+            }
             
             no_addr2 = 0;
           }
@@ -744,17 +765,36 @@ allocate_cell_per_hop(int sink_to_dest_num, int dest_to_src_num, struct rsrc_spe
         */
         // end to make comment
         
-        l[i].pdr_link = ((float)e1->nbr_list[k].total_eb_num/(float)e1->nbr_list[k].total_report_count)/(float)exp_eb_num;
-        if(l[i].pdr_link > 0.999) {
-          l[i].pdr_link = 0.999;
+        if(e1->nbr_list[k].total_eb_num > 0) {
+          l[i].pdr_link = ((float)e1->nbr_list[k].total_eb_num/(float)e1->nbr_list[k].total_report_count)/(float)exp_eb_num;
+          if(l[i].pdr_link > 0.999) {
+            l[i].pdr_link = 0.999;
+          }
+          l[i].pdr_link = 0.95 * l[i].pdr_link;
+        } else {
+          l[i].pdr_link = 0;
         }
-        l[i].pdr_link = 0.95 * l[i].pdr_link;
         //
         
         LOG_ERR("CONTROLLER: EB-num-go: %f, tot eb:%f for hop %d%d \n", e1->nbr_list[k].eb, (float)e1->nbr_list[k].total_eb_num/e1->nbr_list[k].total_report_count, addr1.u8[0], addr1.u8[1]);
         LOG_ERR("CONTROLLER: pdr-go: %f pdr_back: %f for addr-go %d%d, addr-back %d%d \n", l[i].pdr_link, revers_direction_pdr,
                 addr1.u8[0], addr1.u8[1], addr2.u8[0], addr2.u8[1]);
-
+                
+     /*   if(e1->nbr_list[k].total_eb_num <= 0) {
+          LOG_ERR("CONTROLLER: reject flow: no link estimation exists!\n");
+          return 0;
+        } */
+        
+        if(l[i].pdr_link == 0 && revers_direction_pdr > 0) {
+          l[i].pdr_link = revers_direction_pdr;
+        } else if(l[i].pdr_link > 0 && revers_direction_pdr == 0) {
+          revers_direction_pdr = l[i].pdr_link;
+        } else if (l[i].pdr_link == 0 && revers_direction_pdr == 0) {
+          LOG_ERR("CONTROLLER: reject flow: no link estimation exists!\n");
+          return 0;
+        }
+        
+        
         l[i].pdr_link = revers_direction_pdr * l[i].pdr_link;
         
         /************ calculate the RX probability for the ideal mode based
@@ -874,7 +914,7 @@ allocate_cell_per_hop(int sink_to_dest_num, int dest_to_src_num, struct rsrc_spe
     ideal_sum_cells = ideal_sum_cells + l_ideal[i].cell_num;
   }
   
-  LOG_INFO("CONTROLLER: ideal cell number:[%d], estimated cell num:[%d] for LQR:[%.2f] and srce id:[%d%d] \n", ideal_sum_cells, sum_cells, SDN_SIMULATION_RX_SUCCESS, req_spec->src_addr.u8[0], req_spec->src_addr.u8[1]);
+  LOG_INFO("CONTROLLER: ideal cell number:[%d], estimated cell num:[%d] for LQR:[%.2f] and srce id:[%d%d]] \n", ideal_sum_cells, sum_cells, SDN_SIMULATION_RX_SUCCESS, req_spec->src_addr.u8[0], req_spec->src_addr.u8[1]);
   
   return sum_cells;
 }
@@ -1200,7 +1240,7 @@ add_schedule_to_config(struct sdn_packet *config, struct rsrc_spec_of_config *re
   }
   else{
     //last_ts = SDN_SF_REP_PERIOD;
-    last_ts = 251;
+    last_ts = req_spec->app_qos.traffic_period;
   }
   
   //SF ID 
@@ -1637,7 +1677,7 @@ get_shared_cell_list(void)
   //int num_sh_cell_in_rep = (int)ceil((float)((float)sdn_num_shared_cell / (float)num_rep));
   printf("(float)(sdn_num_shared_cell / num_rep): %f", (float)((float)sdn_num_shared_cell/(float)num_rep));
   printf("num_rep:%d sdn_num_shared_cell_in_rep: %d, sdn_num_shared_cell:%d \n", num_rep, sdn_num_shared_cell_in_rep, sdn_num_shared_cell);
-#define SHARED_CELL_LIST_LEN_TMP  100  
+#define SHARED_CELL_LIST_LEN_TMP  DIST_UNIFORM_LEN  
   const int list_shared_cell_len = (int)(sdn_num_shared_cell_in_rep * num_rep);
   static int list_of_shared_cell[SHARED_CELL_LIST_LEN_TMP];
   
@@ -1790,12 +1830,14 @@ get_resource_spec_from_request(struct sdn_packet* p, struct request_id *req_id)
         linkaddr_copy(&req_spec->flow_id, &flow_id_to_controller);
         if((is_true = specify_parent_from_report(p)) == -1) {
           LOG_ERR("CONTROLLER: cannot specify parent addr\n");
+          linkaddr_copy(&req_spec->dest_addr, &linkaddr_null);
         } else {
           specify_shared_cell_offset_for_node(&sender_addr);
+          linkaddr_copy(&req_spec->src_addr, &sender_addr);
+          linkaddr_copy(&req_spec->dest_addr, get_parent_from_node_addr(&sender_addr));
+          LOG_INFO("CONTROLLER: report addr:id %d:%d\n",sender_addr.u8[1], req_id->req_num);
         }
-        linkaddr_copy(&req_spec->src_addr, &sender_addr);
-        linkaddr_copy(&req_spec->dest_addr, get_parent_from_node_addr(&sender_addr));
-        LOG_INFO("CONTROLLER: report addr:id %d:%d\n",sender_addr.u8[1], req_id->req_num);
+        
         break;
 
       case 3:
@@ -1967,9 +2009,13 @@ sdn_send_packet_to_controller(const uint8_t *buf, uint16_t len, const linkaddr_t
       
       if(req_id != NULL && req_id->req_num > 1) {
         req_spec = get_resource_spec_from_request(p, req_id);
-        update_node_nbr_list(p);
         
-        if(req_spec != NULL && &req_spec->dest_addr != NULL) {
+        if(!linkaddr_cmp(&req_spec->dest_addr, &linkaddr_null)) {
+          printf(" update report \n");
+          update_node_nbr_list(p);
+        }
+        
+        if(req_spec != NULL && !linkaddr_cmp(&req_spec->dest_addr, &linkaddr_null)) {
           created_conf = request_confing_packet(req_id, req_spec);
         } 
         if(created_conf != NULL) {
@@ -1979,7 +2025,8 @@ sdn_send_packet_to_controller(const uint8_t *buf, uint16_t len, const linkaddr_t
           }
           sdn_handle_config_packet(&created_conf->packet, created_conf->len, &linkaddr_null);
           //print_global_table();
-        }  
+        } 
+         
       } else{
         update_node_nbr_list(p);
       }
@@ -2082,7 +2129,12 @@ init_num_shared_cells(void)
 int
 calculate_num_shared_cell(void)
 {
-  const float p = 0.03;     // we accept 5% collision in shared cellls
+  float p; // we accept p% collision in shared cellls
+#if SDN_UNCONTROLLED_EB_SENDING
+  p = 0.01;     
+#else
+  p = 0.03; 
+#endif
   float r = 0.01;
   float p_lumbda = 1;
   float lumbda = 1 + r;        // load of traffic in shared cells
@@ -2094,7 +2146,7 @@ calculate_num_shared_cell(void)
   }
   
   ncell = (int)round(1 / lumbda);
-  printf("ncell for lambda: %d, lumbda: %f >> \n", ncell, lumbda);  
+  printf("ncell for lambda: %d, ncell: %f >> \n", lumbda, ncell);  
   
   int num_ring = (int)ceil(NETWORK_RADIUS/TX_RANGE);
   int sum_cell;
@@ -2108,14 +2160,16 @@ calculate_num_shared_cell(void)
   // times by 2 because : we have report + ( config, request, ack-config)
   int cell_coef;
 #if SDN_SHARED_CONTROL_PLANE
-  cell_coef = 1;     // to include report, config, and (request, ack-config)
+  cell_coef = 2;     // to include report, config, and (request, ack-config)
 #elif SDN_SHARED_FROM_CTRL_FLOW
   cell_coef = 1;     // to include only config and intial reports
 #else
   cell_coef = 1;
 #endif
 
-
+#if SDN_UNCONTROLLED_EB_SENDING
+  int non_eb_cells = 0;
+#endif
 
 
   for(i=1; i<num_ring+1; i++) {
@@ -2127,18 +2181,28 @@ calculate_num_shared_cell(void)
       r2 = i*TX_RANGE;
     }    
     nodei = (int)round(((pi*pow(r2,2) - pi*pow(r1,2)) / (pi*pow(NETWORK_RADIUS,2))) * NETWORK_SIZE);
-    
+
+#if !SDN_UNCONTROLLED_EB_SENDING    
     // to not include the sink node
     if(i == 1) {
       nodei = nodei - 1;
     }
-    
+#endif    
     
     if(i == num_ring) {
       nodei = nodei * cell_coef;
     }
 #if SDN_SHARED_CONTROL_PLANE   
     sum_cell = sum_cell + i * (nodei * ncell);    
+    printf("cell calculation: ring: %d, sumcell: %d, nodei: %d >> \n", i, sum_cell, nodei);
+#elif SDN_UNCONTROLLED_EB_SENDING
+    // remove multiplication of hops: eb works one hop
+    sum_cell = sum_cell + (nodei * ncell);   // EB cells
+       
+    if(i == num_ring) {                           // non EB cells
+      non_eb_cells = i * (nodei * ncell);    
+      printf("non eb cells calculation: ring: %d, non_eb_cells: %d >> \n", i, non_eb_cells);
+    }
     printf("cell calculation: ring: %d, sumcell: %d, nodei: %d >> \n", i, sum_cell, nodei);
 #else  
     /* only consider the last ring: it should be enough, because the joining process is like a wave.
@@ -2150,10 +2214,16 @@ calculate_num_shared_cell(void)
     }
 #endif
   }
+
+#if SDN_UNCONTROLLED_EB_SENDING
+  sum_cell = (int)ceil((float)(sum_cell * SDN_DATA_SLOTFRAME_SIZE) / (float)((float)(TSCH_EB_PERIOD / CLOCK_SECOND) * 100));
   
+  sum_cell = sum_cell + (int)ceil((float)(non_eb_cells * SDN_DATA_SLOTFRAME_SIZE) / (float)(SDN_REPORT_PERIOD * 100));
+  printf("estimated shared sum_cell: [%d] \n", sum_cell);
+#else  
   sum_cell = (int)ceil((float)(sum_cell * SDN_DATA_SLOTFRAME_SIZE) / (float)(SDN_REPORT_PERIOD * 100));
   printf("estimated shared sum_cell: [%d] \n", sum_cell);
-  
+#endif  
   return sum_cell;
 }
 /*---------------------------------------------------------------------------*/
@@ -2162,7 +2232,9 @@ calculate_num_shared_cell(void)
 void
 init_num_shared_cells(void)
 {
+#if !SDN_UNCONTROLLED_EB_SENDING
   float cell_ratio = (float)NETWORK_SIZE/(int)((TSCH_EB_PERIOD/10) / SDN_DATA_SLOTFRAME_SIZE);
+#endif
   int extra_shared_cells = calculate_num_shared_cell();
   //printf("cell ration0: %f, eb/sf: %d\n", cell_ratio, (int)((TSCH_EB_PERIOD/10) / SDN_DATA_SLOTFRAME_SIZE));
   //printf("cell ration diff: %f", cell_ratio - (int)cell_ratio);
@@ -2183,7 +2255,11 @@ init_num_shared_cells(void)
   }
   */
   //printf("cell ration2: %f\n", cell_ratio);
+#if SDN_UNCONTROLLED_EB_SENDING
+  sdn_num_shared_cell = (int)(extra_shared_cells);
+#else
   sdn_num_shared_cell = (int)(cell_ratio + extra_shared_cells);
+#endif
   sdn_num_shared_cell_in_rep = (int)ceil(((float)sdn_num_shared_cell / (float)(SDN_DATA_SLOTFRAME_SIZE / SDN_SF_REP_PERIOD)));
                                //(int)ceil((float)((float)sdn_num_shared_cell / (float)num_rep))
   printf("sdn_num_shared_cell: %d, sdn_num_shared_cell_in_rep: %d\n", sdn_num_shared_cell, sdn_num_shared_cell_in_rep);

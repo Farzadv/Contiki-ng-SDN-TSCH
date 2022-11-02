@@ -34,11 +34,11 @@ fi
 
 
 ######################################################################### 
-NODE_NUM_LIST=(24)                        # network size included Sink
-NODE_CRITIC_NUM=(23)                       # number of critic nodes
+NODE_NUM_LIST=(30)                        # network size included Sink
+NODE_CRITIC_NUM=(29)                       # number of critic nodes
 BKG_TS_NUM=(1)                           # number of besteffort timeslot that each node has
-ORCH_SF_LEN=(101)                 # orch sf size 
-LQR_LIST=(0.80)
+ORCH_SF_LEN=(101)                        # orch sf size 
+LQR_LIST=(0.0)
 ITER_PER_CONF=1                           # number of iteration for each config.csc
 SRVR_NUM=1                                # number of server
 
@@ -52,58 +52,58 @@ echo "LIST_SIZE val $LIST_SIZE"
 j=0
 while [[ $j -le $(($LIST_SIZE-1)) ]]
 do 
-		k=0
-		while [[ $k -le $(($LQR_LIST_LEN_SIZE-1)) ]]
-		do									
-				# repeat a given simulation for n times with different seed
-				i=1
-				while [[ $i -le $ITER_PER_CONF ]]
-				do
-						python3 ~/contiki-ng/examples/sdn_udp/py-config-creator-shared_CP/main.py \
-						sf_size=[1506] \
-						ctrl_sf_size=[30] \
-						sf_rep_period=[251] \
-						eb_perid=[15060] \
-						node_num=[${NODE_NUM_LIST[j]}] \
-						server_num=[$SRVR_NUM] \
-						client_bkg_num=[$((${NODE_NUM_LIST[j]}-${NODE_CRITIC_NUM[j]}-SRVR_NUM))] \
-						client_critic_num=[${NODE_CRITIC_NUM[j]}] \
-						bkg_traffic_period=[2510] \
-						critic_traffic_period=[2510] \
-						bkg_timeslot_num=[1] \
-						tx_range=[50.0] \
-						intf_range=[100.0] \
-						tx_success=[1.0] \
-						rx_success=[${LQR_LIST[k]}] \
-						x_radius=[$((${NODE_NUM_LIST[j]}*400/100))] \
-						y_radius=[$((${NODE_NUM_LIST[j]}*400/100))] \
-						itr=[$i] \
-						sim_time_sdn=[10000000] \
-						sim_time_orch=[3000000] \
-						itr_num=[$i]   # 50 min sim len and ASN time is 30
+    k=0
+    while [[ $k -le $(($LQR_LIST_LEN_SIZE-1)) ]]
+    do									
+        # repeat a given simulation for n times with different seed
+	i=1
+	while [[ $i -le $ITER_PER_CONF ]]
+	do
+	    python3 ~/contiki-ng/examples/sdn_udp/py-config-creator-shared_CP/main.py \
+	    sf_size=[1506] \
+	    ctrl_sf_size=[60] \
+	    sf_rep_period=[251] \
+            eb_perid=[15060] \
+	    node_num=[${NODE_NUM_LIST[j]}] \
+	    server_num=[$SRVR_NUM] \
+	    client_bkg_num=[$((${NODE_NUM_LIST[j]}-${NODE_CRITIC_NUM[j]}-SRVR_NUM))] \
+	    client_critic_num=[${NODE_CRITIC_NUM[j]}] \
+	    bkg_traffic_period=[5020] \
+	    critic_traffic_period=[5020] \
+	    bkg_timeslot_num=[1] \
+	    tx_range=[100.0] \
+	    intf_range=[150.0] \
+	    tx_success=[1.0] \
+	    rx_success=[${LQR_LIST[k]}] \
+	    x_radius=[$((${NODE_NUM_LIST[j]}*400/100))] \
+	    y_radius=[$((${NODE_NUM_LIST[j]}*400/100))] \
+	    itr=[$i] \
+	    sim_time_sdn=[10000000] \
+	    sim_time_orch=[3000000] \
+	    itr_num=[$i]   # 50 min sim len and ASN time is 30
 												
-						########################### TSCH-SDN ############################# 
-						# update random seed in each iteration
-						#python3 ~/contiki-ng/examples/sdn_udp/rand_seed_gen_py/main.py tsch-sdn
+	    ########################### TSCH-SDN ############################# 
+	    # update random seed in each iteration
+	    #python3 ~/contiki-ng/examples/sdn_udp/rand_seed_gen_py/main.py tsch-sdn
 						
-						java -Xshare:on -jar ../../tools/cooja/dist/cooja.jar -nogui=config.csc -contiki=../../	
-						if [ -f "COOJA.testlog" ] 
-						then
-								cp COOJA.testlog ~/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log-shared-cp
-								mv ~/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log-shared-cp/COOJA.testlog \
-								   ~/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log-shared-cp/sharedcp-net-${NODE_NUM_LIST[j]}-itr-$i-lqr${LQR_LIST[k]}.testlog
+	    java -Xshare:on -jar ../../tools/cooja/dist/cooja.jar -nogui=config.csc -contiki=../../	
+	    if [ -f "COOJA.testlog" ] 
+	    then
+	        cp COOJA.testlog ~/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log-shared-cp
+		mv ~/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log-shared-cp/COOJA.testlog \
+	           ~/contiki-ng/examples/sdn_udp/msf-rand-top-satatis/log-shared-cp/unconteb-net-${NODE_NUM_LIST[j]}-itr-$i-lqr${LQR_LIST[k]}.testlog
 
-						fi
+	    fi
 
-						i=$(($i+1))	
+	    i=$(($i+1))	
 											
-				done
+	done
 				
-				k=$(($k+1))
+	k=$(($k+1))
 				
-		done	
+    done	
 		
-		j=$(($j+1))	
+    j=$(($j+1))	
 						
 done	
 ###################################################################################
