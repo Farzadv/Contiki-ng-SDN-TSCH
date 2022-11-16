@@ -21,11 +21,11 @@
 #define LOG_LEVEL SDN_SINK_LOG_LEVEL
 
 
-static float POS_ARRAY[43][2] = {{0, 0}, {9.12, -36.06}, {-26.73, 27.66}, {22.71, 4.14}, {-19.98, -13.31}, {-15.59, 4.91}, {12.55, 15.9}, {-35.23, -6.45}, {13.41, -14.81}, {20.57, 20.81}, {-25.49, -21.44}, {-25.77, 16.84}, {-6.56, 16.93}, {27.02, -47.05}, {-6.04, -41.93}, {25.2, -39.95}, {-1.0, -46.9}, {17.27, -65.91}, {5.53, -60.18}, {-35.79, 57.72}, {-39.91, 49.28}, {-26.13, 64.71}, {-52.21, 52.12}, {-37.44, 61.16}, {0.87, 53.18}, {-46.6, 11.01}, {-48.11, 24.87}, {-17.29, 52.13}, {-53.49, 23.07}, {51.08, 27.64}, {44.6, 28.7}, {44.81, 29.31}, {40.09, 14.16}, {-43.09, -13.38}, {32.31, 43.15}, {50.7, 38.89}, {-46.93, -44.62}, {-44.31, -48.36}, {-6.33, -73.07}, {-20.64, 72.88}, {-18.8, 69.2}, {67.9, 16.65}, {-49.86, -51.63}};
+static float POS_ARRAY[50][2] = {{0, 0}, {-21.97, 7.13}, {31.4, 22.09}, {31.5, -8.8}, {-0.87, -27.15}, {-27.61, 20.61}, {24.11, 11.12}, {10.6, 6.37}, {21.1, 11.78}, {-27.83, 35.62}, {-48.87, 15.74}, {-50.32, -10.98}, {45.99, 17.89}, {67.75, 12.73}, {15.68, 42.53}, {57.9, 44.05}, {38.55, 54.91}, {49.37, 40.08}, {-0.66, 42.97}, {39.25, 27.99}, {8.65, -37.85}, {35.94, -22.32}, {-1.58, -52.63}, {-22.74, -39.03}, {-49.93, 42.9}, {-8.23, 52.08}, {-56.4, 56.6}, {-30.43, 60.93}, {-79.13, -0.12}, {-57.61, -14.76}, {-68.78, 12.77}, {-78.39, 26.55}, {-52.07, -24.01}, {-64.57, -19.81}, {74.44, 19.22}, {79.11, -16.68}, {41.56, 66.74}, {8.24, 74.36}, {18.7, 60.16}, {26.07, 68.85}, {49.41, 65.35}, {71.76, -36.25}, {60.37, -47.83}, {16.97, -76.84}, {-19.47, -67.43}, {-39.26, -48.54}, {-23.45, 80.47}, {-10.28, 88.03}, {61.36, -54.65}, {27.97, -77.77}};
 
 static linkaddr_t last_flow_id = {{ 0x08, 0x00 }};
 static float coef = 0.5;
-#define ADMIT_FLOW_PDR        0.85    // in the joining process the selected parent must have EB pdr above ADMIT_FLOW_PDR
+#define ADMIT_FLOW_PDR        0.8    // in the joining process the selected parent must have EB pdr above ADMIT_FLOW_PDR
 //static float coef_link_pdr = 0.9;
 #define GLOBAL_TS_LIST_LEN    SDN_DATA_SLOTFRAME_SIZE
 #define GLOBAL_CH_LIST_LEN    SDN_MAX_CH_OFF_NUM
@@ -2130,11 +2130,7 @@ int
 calculate_num_shared_cell(void)
 {
   float p; // we accept p% collision in shared cellls
-#if SDN_UNCONTROLLED_EB_SENDING
-  p = 0.01;     
-#else
   p = 0.03; 
-#endif
   float r = 0.01;
   float p_lumbda = 1;
   float lumbda = 1 + r;        // load of traffic in shared cells
@@ -2167,10 +2163,6 @@ calculate_num_shared_cell(void)
   cell_coef = 1;
 #endif
 
-#if SDN_UNCONTROLLED_EB_SENDING
-  int non_eb_cells = 0;
-#endif
-
 
   for(i=1; i<num_ring+1; i++) {
     if(i*TX_RANGE > NETWORK_RADIUS) {
@@ -2181,28 +2173,18 @@ calculate_num_shared_cell(void)
       r2 = i*TX_RANGE;
     }    
     nodei = (int)round(((pi*pow(r2,2) - pi*pow(r1,2)) / (pi*pow(NETWORK_RADIUS,2))) * NETWORK_SIZE);
-
-#if !SDN_UNCONTROLLED_EB_SENDING    
+   
     // to not include the sink node
     if(i == 1) {
       nodei = nodei - 1;
     }
-#endif    
+   
     
     if(i == num_ring) {
       nodei = nodei * cell_coef;
     }
 #if SDN_SHARED_CONTROL_PLANE   
     sum_cell = sum_cell + i * (nodei * ncell);    
-    printf("cell calculation: ring: %d, sumcell: %d, nodei: %d >> \n", i, sum_cell, nodei);
-#elif SDN_UNCONTROLLED_EB_SENDING
-    // remove multiplication of hops: eb works one hop
-    sum_cell = sum_cell + (nodei * ncell);   // EB cells
-       
-    if(i == num_ring) {                           // non EB cells
-      non_eb_cells = i * (nodei * ncell);    
-      printf("non eb cells calculation: ring: %d, non_eb_cells: %d >> \n", i, non_eb_cells);
-    }
     printf("cell calculation: ring: %d, sumcell: %d, nodei: %d >> \n", i, sum_cell, nodei);
 #else  
     /* only consider the last ring: it should be enough, because the joining process is like a wave.
@@ -2214,16 +2196,9 @@ calculate_num_shared_cell(void)
     }
 #endif
   }
-
-#if SDN_UNCONTROLLED_EB_SENDING
-  sum_cell = (int)ceil((float)(sum_cell * SDN_DATA_SLOTFRAME_SIZE) / (float)((float)(TSCH_EB_PERIOD / CLOCK_SECOND) * 100));
   
-  sum_cell = sum_cell + (int)ceil((float)(non_eb_cells * SDN_DATA_SLOTFRAME_SIZE) / (float)(SDN_REPORT_PERIOD * 100));
-  printf("estimated shared sum_cell: [%d] \n", sum_cell);
-#else  
   sum_cell = (int)ceil((float)(sum_cell * SDN_DATA_SLOTFRAME_SIZE) / (float)(SDN_REPORT_PERIOD * 100));
   printf("estimated shared sum_cell: [%d] \n", sum_cell);
-#endif  
   return sum_cell;
 }
 /*---------------------------------------------------------------------------*/
@@ -2232,9 +2207,9 @@ calculate_num_shared_cell(void)
 void
 init_num_shared_cells(void)
 {
-#if !SDN_UNCONTROLLED_EB_SENDING
+
   float cell_ratio = (float)NETWORK_SIZE/(int)((TSCH_EB_PERIOD/10) / SDN_DATA_SLOTFRAME_SIZE);
-#endif
+
   int extra_shared_cells = calculate_num_shared_cell();
   //printf("cell ration0: %f, eb/sf: %d\n", cell_ratio, (int)((TSCH_EB_PERIOD/10) / SDN_DATA_SLOTFRAME_SIZE));
   //printf("cell ration diff: %f", cell_ratio - (int)cell_ratio);
@@ -2255,11 +2230,7 @@ init_num_shared_cells(void)
   }
   */
   //printf("cell ration2: %f\n", cell_ratio);
-#if SDN_UNCONTROLLED_EB_SENDING
-  sdn_num_shared_cell = (int)(extra_shared_cells);
-#else
   sdn_num_shared_cell = (int)(cell_ratio + extra_shared_cells);
-#endif
   sdn_num_shared_cell_in_rep = (int)ceil(((float)sdn_num_shared_cell / (float)(SDN_DATA_SLOTFRAME_SIZE / SDN_SF_REP_PERIOD)));
                                //(int)ceil((float)((float)sdn_num_shared_cell / (float)num_rep))
   printf("sdn_num_shared_cell: %d, sdn_num_shared_cell_in_rep: %d\n", sdn_num_shared_cell, sdn_num_shared_cell_in_rep);

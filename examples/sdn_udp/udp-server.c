@@ -32,7 +32,6 @@
 #include "net/routing/routing.h"
 #include "net/netstack.h"
 #include "net/ipv6/simple-udp.h"
-#include "udp-server.h"
 #include "sys/energest.h"
 #include "net/mac/tsch/sdn/sdn.h"
 #include "net/mac/tsch/sdn/sdn-handle.h"
@@ -54,6 +53,8 @@
 
 static struct simple_udp_connection udp_conn;
 static int should_print_sch = 0;
+
+void create_initial_schedule_sink(void);
 
 PROCESS(udp_server_process, "UDP server");
 AUTOSTART_PROCESSES(&udp_server_process);
@@ -91,7 +92,7 @@ udp_rx_callback(struct simple_udp_connection *c,
              (uint8_t)data[7] << 8 |
              (uint8_t)data[8] << 16 |
              (uint8_t)data[9] << 24;
-  LOG_INFO("11111111 |sr %d%d sr|d %d%d d|s %u s|as 0x%lx as|ar 0x%lx ar|c %d c|p %d p|", src_addr.u8[0], src_addr.u8[1], dest_addr.u8[0], dest_addr.u8[1], seq_num, sent_asn, tsch_current_asn.ls4b, packetbuf_attr(PACKETBUF_ATTR_CHANNEL), sender_port);
+  LOG_INFO("11111111 |sr %d%d sr|d %d%d d|s %u s|as 0x%x as|ar 0x%x ar|c %d c|p %d p|", src_addr.u8[0], src_addr.u8[1], dest_addr.u8[0], dest_addr.u8[1], seq_num, sent_asn, tsch_current_asn.ls4b, packetbuf_attr(PACKETBUF_ATTR_CHANNEL), sender_port);
   LOG_INFO_("\n");
   
   if(!should_print_sch && tsch_current_asn.ls4b > SDN_PRINT_ASN) {

@@ -28,6 +28,7 @@ intf_range = get_val_from_input_array(param_input, "intf_range")  # meter
 tx_success = get_val_from_input_array(param_input, "tx_success")
 rx_success = get_val_from_input_array(param_input, "rx_success")
 worst_link = get_val_from_input_array(param_input, "worst_link")
+# rand_seed = get_val_from_input_array(param_input, "rand_seed")
 x_radius = get_val_from_input_array(param_input, "x_radius")  # meter
 y_radius = get_val_from_input_array(param_input, "y_radius")  # meter
 sim_time_sdn = get_val_from_input_array(param_input, "sim_time_sdn")  # sdn-simulation time in ms

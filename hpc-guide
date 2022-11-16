@@ -1,0 +1,11 @@
+
+
+main points to run contiki-ng + cooja over HPC server:
+
+- if I change something in java source of cooja, I have to compile the cooja file to be affected. to do so I should 
+  compile it inside Docker container: contiker
+    - contiker
+    - cd contiki-ng/tools/cooja
+    - ant run
+- you should enable headless setting in the cooja dir -> follow this link: https://github.com/cetic/cooja-radiologger-headless 
+

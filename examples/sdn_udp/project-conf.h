@@ -84,11 +84,11 @@
    In the case we use short address, without enabeling the following line 
    receiver cannot pars Ack packet*/ 
 #define TSCH_PACKET_CONF_EACK_WITH_SRC_ADDR 1
-
 #define LINKADDR_CONF_SIZE 2
 
-#define QUEUEBUF_CONF_NUM                  128
-#define TSCH_QUEUE_CONF_NUM_PER_NEIGHBOR   64
+// Not sure why I add these 2 lines?
+//#define QUEUEBUF_CONF_NUM                  128
+#define TSCH_QUEUE_CONF_NUM_PER_NEIGHBOR     16
 /*******************************************************/
 /******************* UIP Configure  ********************/
 /*******************************************************/
@@ -111,7 +111,7 @@
 #define SDN_CONF_SHARE_SLOT_POSITION 1                      // if =1 -> node fine shared slots positions. if =0 -> just minimal schedule 
 #define SDN_CONF_NBR_TABLE 1
 #define SDN_CONF_LINK_METRIC EB_NUM
-#define SDN_CONF_REPORT_PERIOD   (20 * 1506 / 100)          // = 150 sec
+#define SDN_CONF_REPORT_PERIOD   (20 * 1506 / 100)          
 //#define SDN_CONF_NUM_SHARED_CELL_IN_REP  20               // num shared cells per sub-SF repetition
 //#define SDN_CONF_SHARED_CONTROL_PLANE       1 
 //#define SDN_CONF_SHARED_FROM_CTRL_FLOW    1

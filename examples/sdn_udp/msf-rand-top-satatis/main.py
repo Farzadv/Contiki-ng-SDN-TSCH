@@ -17,7 +17,7 @@ flow_config_time_df = pd.DataFrame(columns=['Flow configuration time(s)', 'Netwo
 convergence_df = pd.DataFrame(columns=['Convergence time(s)', 'Network Solution', 'Network size'])
 ts_num_df = pd.DataFrame(columns=['Normalized scheduled cells', 'Network Solution', 'Network size'])
 collision_rate_df = pd.DataFrame(columns=['Normalized link quality estimation', 'Network Solution', 'Network size'])
-energy_consumption_joined_df = pd.DataFrame(columns=['Energy consumption (mJ)', 'Network Solution', 'Network size'])
+energy_consumption_joined_df = pd.DataFrame(columns=['Network lifetime (s)', 'Network Solution', 'Network size'])
 energy_consumption_bootstrap_df = pd.DataFrame(columns=['Energy consumption (mJ)', 'Network Solution', 'Network size'])
 pdr_df = pd.DataFrame(columns=['PDR(%) before deadline', 'Network Solution', 'Network size'])
 num_tx_df = pd.DataFrame(columns=['Number of TX+RTX', 'Network Solution', 'Network size'])
@@ -26,12 +26,13 @@ sf_max_cell_usage_df = pd.DataFrame(columns=['Max cell usage per SF and node', '
 never_used_cell_df = pd.DataFrame(columns=['Number of never used cells', 'Network Solution', 'Network size'])
 
 app_int = 5.02
-net_size_array = [30]
+net_size_array = [20]
 lqr_array = [0.0]
-simu_len = 500
+simu_len = 100
 link_quality_coeff = 0.9025
 sf_rep = 3
 sf_size = 1506
+packet_deadline = 5030
 print_asn = int('0xCF850', 16)
 
 sent_asn_start_sing = 's|as '
@@ -67,10 +68,10 @@ flow_resp_asn_sing_start = 'RECEIVE_ASN=['
 flow_resp_asn_sing_end = ']]]]]'
 
 msf_filename_key = 'msf-net-'
-sdn_filename_key = 'sdn-net-'
-shared_filename_key = 'sharedcp-net-'
-shared_fctrl_filename_key = 'sharedfctrl-net-'
-stupid_filename_key = 'unconteb-net-'
+sdn_filename_key = 'dedicated-net-'
+shared_filename_key = 'shared-net-'
+shared_fctrl_filename_key = 'mix-net-'
+stupid_filename_key = 'stupid-net-'
 
 
 sf_ts_num_start_sing = '*** sf_size[['
@@ -132,7 +133,7 @@ def e2e_delay(log_file_name, end_node_id):
                 if lat_critic_array1[node_addr - 1][int(line[seq_s:seq_e]) - 1] == None:
                     lat_critic_array1[node_addr - 1][int(line[seq_s:seq_e]) - 1] = (int(line[rcv_asn_s:rcv_asn_e], \
                                                                                         16) - int(line[sent_asn_s:sent_asn_e], 16)) * 10
-                    if ((int(line[rcv_asn_s:rcv_asn_e], 16) - int(line[sent_asn_s:sent_asn_e], 16)) * 10) < 2520:
+                    if ((int(line[rcv_asn_s:rcv_asn_e], 16) - int(line[sent_asn_s:sent_asn_e], 16)) * 10) < packet_deadline:
                         bounded_lat_array[node_addr - 1][int(line[seq_s:seq_e]) - 1] = (int(line[rcv_asn_s:rcv_asn_e], \
                                                                                         16) - int(line[sent_asn_s:sent_asn_e], 16)) * 10
                     # else:
@@ -594,11 +595,13 @@ def get_energy_consumption(log_file_name, net_size, solution_name):
     lpm_curr = 0.0545   # mA
     tx_curr = 17.7      # mA
     rx_curr = 20        # mA
+    initial_En = 1200   # mAH
 
     key_before_join = 'ENGY before join->ID['
     key_after_join = 'ENGY after join->ID['
     key_cup = '] CPU:'
     key_lpm = 's LPM:'
+    key_time = 's Tot_time:'
     key_rx = 's Radio LISTEN:'
     key_tx = 's TRANSMIT:'
     key_end = 's OFF:'
@@ -608,8 +611,8 @@ def get_energy_consumption(log_file_name, net_size, solution_name):
     key_rx_cell4 = '], asn['
     key_rx_cell5 = ']]'
 
-    before_join_list = [[0 for j in range(3)] for i in range(net_size + 1)]
-    after_join_list = [[0 for j in range(3)] for i in range(net_size + 1)]
+    before_join_list = [[0 for j in range(4)] for i in range(net_size + 1)]
+    after_join_list = [[0 for j in range(4)] for i in range(net_size + 1)]
     energy_list_after_join = []
     energy_list_before_join = []
     idle_energy_list = [0 for i in range(net_size + 1)]
@@ -632,6 +635,10 @@ def get_energy_consumption(log_file_name, net_size, solution_name):
             e = line.find(key_end)
             before_join_list[node_id][2] = int(line[s:e])
 
+            s = line.find(key_time) + len(key_time)
+            e = line.find(key_rx)
+            before_join_list[node_id][3] = int(line[s:e])
+
         if key_after_join in line:
             s = line.find(key_after_join) + len(key_after_join)
             e = line.find(key_cup)
@@ -649,6 +656,10 @@ def get_energy_consumption(log_file_name, net_size, solution_name):
             e = line.find(key_end)
             after_join_list[node_id][2] = int(line[s:e])
 
+            s = line.find(key_time) + len(key_time)
+            e = line.find(key_rx)
+            after_join_list[node_id][3] = int(line[s:e])
+
         if key_rx_cell1 in line:
             s = line.find(key_rx_cell1) + len(key_rx_cell1)
             e = line.find(key_rx_cell2)
@@ -665,23 +676,28 @@ def get_energy_consumption(log_file_name, net_size, solution_name):
                 asn = int(line[ss:ee], 16)
                 idle_energy_list[rx_node_id] += (((print_asn - asn) / sf_size) * rx_cell) * 0.0026
 
-
     print('idle energy list: ', idle_energy_list)
     for i in range(1, net_size + 1):
         cpu_time = after_join_list[i][0] - before_join_list[i][0]
         rx_time = after_join_list[i][1] - before_join_list[i][1] #- idle_energy_list[i]
         tx_time = after_join_list[i][2] - before_join_list[i][2]
-        print('Time after join: node:', i, 'cpu_time:', cpu_time, 'rx_time:', rx_time, 'tx_time:', tx_time)
-        energy_list_after_join.append((cpu_time * cpu_curr + rx_time * rx_curr + tx_time * tx_curr) * voltage)
-        print('Energy after join: ', 'cpu:', cpu_time * cpu_curr, 'rx:', rx_time * rx_curr, 'tx:', tx_time * tx_curr)
+        tot_time = after_join_list[i][3] - before_join_list[i][3]
+        # print('Time after join: node:', i, 'cpu_time:', cpu_time, 'rx_time:', rx_time, 'tx_time:', tx_time)
+        energy = (cpu_time * cpu_curr + rx_time * rx_curr + tx_time * tx_curr)
+        energy_list_after_join.append((initial_En * 3.6) / (energy / tot_time))
+        # print('Energy after join: ', 'cpu:', cpu_time * cpu_curr, 'rx:', rx_time * rx_curr, 'tx:', tx_time * tx_curr)
+        print('Node:', i, 'Energy after join: ', energy)
 
     for i in range(1, net_size + 1):
         cpu_time = before_join_list[i][0]
         rx_time = before_join_list[i][1]
         tx_time = before_join_list[i][2]
-        print('Time before join: ', 'cpu_time:', cpu_time, 'rx_time:', rx_time, 'tx_time:', tx_time)
-        energy_list_before_join.append((cpu_time * cpu_curr + rx_time * rx_curr + tx_time * tx_curr) * voltage)
-        print('Energy before join: ', 'cpu:', cpu_time * cpu_curr, 'rx:', rx_time * rx_curr, 'tx:', tx_time * tx_curr)
+        tot_time = before_join_list[i][3]
+        # print('Time before join: ', 'cpu_time:', cpu_time, 'rx_time:', rx_time, 'tx_time:', tx_time)
+        energy = (cpu_time * cpu_curr + rx_time * rx_curr + tx_time * tx_curr) * voltage
+        energy_list_before_join.append(energy)
+        # print('Energy before join: ', 'cpu:', cpu_time * cpu_curr, 'rx:', rx_time * rx_curr, 'tx:', tx_time * tx_curr)
+        print('Node:', i, 'Energy before join: ', energy)
 
     print('energy_list: ', energy_list_after_join, energy_list_before_join)
 
@@ -1380,7 +1396,7 @@ plt.savefig('coll_rate.pdf', bbox_inches='tight')
 # # ################## plot energy consumption joined #######################
 sns.set(font_scale=3.2)
 sns.set_style({'font.family': 'serif'})
-ax_sdn_pdr = sns.catplot(kind='violin', data=energy_consumption_joined_df, x='Network size', y='Energy consumption (mJ)',
+ax_sdn_pdr = sns.catplot(kind='violin', data=energy_consumption_joined_df, x='Network size', y='Network lifetime (s)',
                          hue='Network Solution', palette="tab10", cut=0, scale='width',
                          saturation=1, legend=False, height=10, aspect=1.8)
 # ax_sdn_pdr.set(ylim=(0, 102))

@@ -164,7 +164,7 @@ sdn_add_app_flow_enrty(const linkaddr_t *flow_id, struct socket *udp_socket, str
       e->socket = udp_socket;
       e->app_qos = udp_app_qos;
       list_add(sdn_app_flow_table, e);
-      LOG_INFO("SDN-FLOW-REQUEST: add a new app flow id, addr = [%d%d], RECEIVE_ASN=[0x%lx]]]]] \n", linkaddr_node_addr.u8[0], linkaddr_node_addr.u8[1], tsch_current_asn.ls4b);
+      LOG_INFO("SDN-FLOW-REQUEST: add a new app flow id, addr = [%d%d], RECEIVE_ASN=[0x%x]]]]] \n", linkaddr_node_addr.u8[0], linkaddr_node_addr.u8[1], tsch_current_asn.ls4b);
       LOG_INFO_LLADDR(&e->flow_id);
       LOG_INFO_("\n");
       return 1;
@@ -223,7 +223,7 @@ sdn_app_find_flow_id(struct socket *udp_socket, struct app_qos_attr *udp_app_qos
         }
       }
       packet_deallocate(request);
-      LOG_INFO("SDN-FLOW-REQUEST: request a critical fid = [%d%d] from controller, SEND_ASN=[0x%lx]]]]]\n", linkaddr_node_addr.u8[0], linkaddr_node_addr.u8[1], tsch_current_asn.ls4b);
+      LOG_INFO("SDN-FLOW-REQUEST: request a critical fid = [%d%d] from controller, SEND_ASN=[0x%x]]]]]\n", linkaddr_node_addr.u8[0], linkaddr_node_addr.u8[1], tsch_current_asn.ls4b);
       //flow_id = &best_effort; // temp...
 #endif
     }

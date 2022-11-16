@@ -32,7 +32,6 @@
 #include "net/routing/routing.h"
 #include "net/netstack.h"
 #include "net/ipv6/simple-udp.h"
-#include "udp-server.h"
 #include "net/mac/tsch/sdn/sdn.h"
 #include "net/mac/tsch/sdn/sdn-handle.h"
 #include "net/mac/tsch/sdn/sdn-conf.h"

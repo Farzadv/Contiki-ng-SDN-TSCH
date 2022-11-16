@@ -1264,7 +1264,7 @@ PROCESS_THREAD(sdn_report_process, ev, data)
       if(sdn_nbr_num > SDN_MAX_NUM_REPORT_NBR) {
         int find_valid_eb_rate = 0; 
         int tmp_num_nbr;
-        valid_eb_rate = 0.45;
+        valid_eb_rate = 0.05;
         while(!find_valid_eb_rate || valid_eb_rate >= 1) {
           tmp_num_nbr = 0;
           valid_eb_rate = valid_eb_rate + 0.05;
@@ -1369,7 +1369,7 @@ PROCESS_THREAD(tsch_send_eb_process, ev, data)
     PROCESS_WAIT_UNTIL(etimer_expired(&eb_timer));
     etimer_reset(&eb_timer);
   }
-printf("\nnode %d%d Start with TSCH and SDN at ASN: 0x%lx ]\n", linkaddr_node_addr.u8[0], linkaddr_node_addr.u8[1], tsch_current_asn.ls4b);
+printf("\nnode %d%d Start with TSCH and SDN at ASN: 0x%x ]\n", linkaddr_node_addr.u8[0], linkaddr_node_addr.u8[1], tsch_current_asn.ls4b);
 #endif
 #if !SDN_ENABLE
   while(!tsch_is_associated) {
@@ -1424,7 +1424,7 @@ printf("\nnode %d%d Start with TSCH and SDN at ASN: 0x%lx ]\n", linkaddr_node_ad
       }
     }
     
-    //LOG_ERR("send EB in asn 0x%lx \n", tsch_current_asn.ls4b);
+    //LOG_ERR("send EB in asn 0x%x \n", tsch_current_asn.ls4b);
 #if SDN_ENABLE    
     PROCESS_WAIT_UNTIL(etimer_expired(&eb_period_timer1));
     etimer_reset(&eb_period_timer1);

@@ -74,7 +74,7 @@ udp_rx_callback(struct simple_udp_connection *c,
              (uint8_t)data[7] << 8 |
              (uint8_t)data[8] << 16 |
              (uint8_t)data[9] << 24;
-  LOG_INFO("11111111 |sr %d%d sr|d %d%d d|s %u s|as 0x%lx as|ar 0x%lx ar|c %d c|", src_addr.u8[0], src_addr.u8[1], dest_addr.u8[0], dest_addr.u8[1], seq_num, sent_asn, tsch_current_asn.ls4b, packetbuf_attr(PACKETBUF_ATTR_CHANNEL));
+  LOG_INFO("11111111 |sr %d%d sr|d %d%d d|s %u s|as 0x%x as|ar 0x%x ar|c %d c|", src_addr.u8[0], src_addr.u8[1], dest_addr.u8[0], dest_addr.u8[1], seq_num, sent_asn, tsch_current_asn.ls4b, packetbuf_attr(PACKETBUF_ATTR_CHANNEL));
   if(!should_print_sch && tsch_current_asn.ls4b > 0x3A980) {
     tsch_schedule_print();
     should_print_sch = 1;

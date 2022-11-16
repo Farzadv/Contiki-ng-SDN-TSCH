@@ -127,7 +127,7 @@ PROCESS_THREAD(udp_app1_process, ev, data)
     PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&periodic_timer));
     //if(NETSTACK_ROUTING.node_is_reachable() && NETSTACK_ROUTING.get_root_ipaddr(&dest_ipaddr)) {
       /* Send to DAG root */
-      LOG_INFO("Sending data %u to sink with asn 0x%lx ", count_app1, tsch_current_asn.ls4b);
+      LOG_INFO("Sending data %u to sink with asn 0x%x ", count_app1, tsch_current_asn.ls4b);
       //LOG_INFO_6ADDR(&server_ipaddr);
       LOG_INFO_("\n");
       //snprintf(str, sizeof(str), "hello %d", count_app1);
@@ -220,7 +220,7 @@ PROCESS_THREAD(udp_app2_process, ev, data)
     //if(NETSTACK_ROUTING.node_is_reachable() && NETSTACK_ROUTING.get_root_ipaddr(&dest_ipaddr)) {
       /* Send to DAG root */
       if(count_app1 > 300) {
-      LOG_INFO("Sending data %u to sink with asn 0x%lx ", count_app2, tsch_current_asn.ls4b);
+      LOG_INFO("Sending data %u to sink with asn 0x%x ", count_app2, tsch_current_asn.ls4b);
       //LOG_INFO_6ADDR(&server_ipaddr);
       LOG_INFO_("\n");
       //snprintf(str, sizeof(str), "hello %d", count_app2);

@@ -83,7 +83,7 @@ print_sf_cell_usage(uint16_t handle)
         l = list_item_next(l);
       }
 /*      
-      LOG_INFO("### sf_count[0x%lx] sf_cell_usage[[%u]] node_addr %d%d >>\n", tsch_current_asn.ls4b, sf_cell_used, linkaddr_node_addr.u8[0],
+      LOG_INFO("### sf_count[0x%x] sf_cell_usage[[%u]] node_addr %d%d >>\n", tsch_current_asn.ls4b, sf_cell_used, linkaddr_node_addr.u8[0],
                                                                                                     linkaddr_node_addr.u8[1]);
 */      
       if(sf_cell_used > max_sf_cell_used) {
