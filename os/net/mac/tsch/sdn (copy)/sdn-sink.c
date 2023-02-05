@@ -27,10 +27,8 @@ static linkaddr_t last_flow_id = {{ 0x08, 0x00 }};
 static float coef = 0.5;
 #if SDN_UNCONTROLLED_EB_SENDING
 #define ADMIT_FLOW_PDR        0.5    // in the joining process the selected parent must have EB pdr above ADMIT_FLOW_PDR
-#elif SDN_MDPI_TEST
-#define ADMIT_FLOW_PDR        0.4
 #else
-#define ADMIT_FLOW_PDR        0.6   // graph p = 0.9 : what 0.84? consider one EB lower than expected -> exp =20, 0.84 = (.9*20 - 1)/20
+#define ADMIT_FLOW_PDR        0.84   // graph p = 0.9 : what 0.84? consider one EB lower than expected -> exp =20, 0.84 = (.9*20 - 1)/20
 #endif
 //static float coef_link_pdr = 0.9;
 #define GLOBAL_TS_LIST_LEN    SDN_DATA_SLOTFRAME_SIZE
@@ -765,9 +763,7 @@ allocate_cell_per_hop(int sink_to_dest_num, int dest_to_src_num, struct rsrc_spe
             } else {
               revers_direction_pdr = 0;
             }
-#if SDN_MDPI_TEST //artificially set link as perfect to check the behavior of MDPI paper
-            revers_direction_pdr = 0.999;
-#endif
+            
             //no_addr2 = 0;
           }
         }
@@ -798,9 +794,6 @@ allocate_cell_per_hop(int sink_to_dest_num, int dest_to_src_num, struct rsrc_spe
         } else {
           l[i].pdr_link = 0;
         }
-#if SDN_MDPI_TEST //artificially set link as perfect to check the behavior of MDPI paper
-        l[i].pdr_link = 0.999;
-#endif
         //
         
         LOG_ERR("CONTROLLER: EB-num-go: %f, tot eb:%f for hop %d%d \n", e1->nbr_list[k].eb, (float)e1->nbr_list[k].total_eb_num/e1->nbr_list[k].total_report_count, addr1.u8[0], addr1.u8[1]);
@@ -1956,9 +1949,6 @@ get_resource_spec_from_request(struct sdn_packet* p, struct request_id *req_id)
 linkaddr_t * 
 get_free_flow_id(void)
 {
-#if SDN_MDPI_TEST
-  return &last_flow_id;
-#endif
   if(last_flow_id.u8[0] < 255) {
     last_flow_id.u8[0] = last_flow_id.u8[0] + 1;
     return &last_flow_id;
@@ -1990,7 +1980,7 @@ sdn_send_packet_to_controller(const uint8_t *buf, uint16_t len, const linkaddr_t
   
   switch(p->typ & 0x0f) {
     case CONFIG_ACK:
-      LOG_INFO("CONTROLLER: receive config ack \n");
+      LOG_INFO("sdn-handle: receive config ack \n");
       handle_config_ack_packet(p);
       break;
   

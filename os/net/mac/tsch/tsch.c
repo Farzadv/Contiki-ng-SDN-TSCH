@@ -68,6 +68,7 @@
 #include "net/mac/tsch/sdn/sdn-inout.h"
 #include "net/mac/tsch/sdn/sdn-flow.h"
 #include "net/mac/tsch/sdn/sdn-algo.h"
+#include "sys/energest.h"
 #endif
 
 #if TSCH_WITH_SIXTOP
@@ -725,6 +726,14 @@ tsch_disassociate(void)
   }
 }
 /*---------------------------------------------------------------------------*/
+#if SDN_ENABLE
+static inline unsigned long
+to_seconds(uint64_t time)
+{
+  return (unsigned long)(time / (ENERGEST_SECOND / 1000));
+}
+#endif
+/*---------------------------------------------------------------------------*/
 /* Attempt to associate to a network form an incoming EB */
 static int
 tsch_associate(const struct input_packet *input_eb, rtimer_clock_t timestamp)
@@ -857,6 +866,24 @@ tsch_associate(const struct input_packet *input_eb, rtimer_clock_t timestamp)
             ies.ie_tsch_slotframe_and_link.links[i].timeslot,
             ies.ie_tsch_slotframe_and_link.links[i].channel_offset, 1);
       }
+#endif
+
+/* print the energest times until receive first EB */
+#if SDN_ENABLE
+      energest_flush();
+      printf("\nENGY boot join->ID[%d%d]", linkaddr_node_addr.u8[0], linkaddr_node_addr.u8[1]);
+      printf(" CPU:%lus LPM:%lus DEEPLPM:%lus Tot_time: %lus",
+           to_seconds(energest_type_time(ENERGEST_TYPE_CPU)),
+           to_seconds(energest_type_time(ENERGEST_TYPE_LPM)),
+           to_seconds(energest_type_time(ENERGEST_TYPE_DEEP_LPM)),
+           to_seconds(ENERGEST_GET_TOTAL_TIME()));
+      printf(" Radio LISTEN: %lus TRANSMIT:%lus OFF:%lus ]]0x%x>>\n",
+           to_seconds(energest_type_time(ENERGEST_TYPE_LISTEN)),
+           to_seconds(energest_type_time(ENERGEST_TYPE_TRANSMIT)),
+           to_seconds(ENERGEST_GET_TOTAL_TIME()
+                      - energest_type_time(ENERGEST_TYPE_TRANSMIT)
+                      - energest_type_time(ENERGEST_TYPE_LISTEN)),
+                      tsch_current_asn.ls4b);
 #endif
 /*--------------------------------veisi--------------------------------------*/
 /* add other shared slots to sf. shared slots distributed uniformly over sf
@@ -1183,7 +1210,7 @@ PROCESS_THREAD(sdn_report_process, ev, data)
     PROCESS_WAIT_UNTIL(etimer_expired(&report_timer));
     etimer_reset(&report_timer);
     if(!tsch_is_associated) {
-      LOG_INFO("sdn report process: TSCH is not associated \n");
+      LOG_ERR("sdn report process: TSCH is not associated \n");
     } else {
   
       /* find first offset to send report packet */ 
@@ -1208,7 +1235,7 @@ PROCESS_THREAD(sdn_report_process, ev, data)
       //     TX schedule for FROM-CONTROLLER. problem in last node.
       int num_entry_to_ctrl = sdn_is_flowid_exist_in_table(&flow_id_to_controller);
       if(num_entry_to_ctrl > 7){num_entry_to_ctrl = 7;}
-#if SDN_SHARED_FROM_CTRL_FLOW
+#if SDN_SHARED_FROM_CTRL_FLOW || SDN_SHARED_CONTROL_PLANE
       if(num_entry_to_ctrl > 0) {
         num_from_controller_rx_slots = 1;
         sdn_is_joined = 1;
@@ -1332,10 +1359,16 @@ PROCESS_THREAD(sdn_report_process, ev, data)
       int fid_exsit;
       if((fid_exsit = sdn_is_flowid_exist_in_table(&flow_id_to_controller)) > 0){
         sdn_output(&linkaddr_null, &flow_id_to_controller, 1, NULL);
-      } else {
+      } else if(addr != NULL) {
         sdn_output(addr, &flow_id_to_controller, 1, NULL);
+      } else{
+        printf("\n fail to send report packet with size: %d\n", report_size+1);
       }
-      printf("\n send report packet with size: %d\n", report_size+1);
+      
+      if(addr != NULL) {
+        printf("\n send report packet with size: %d\n", report_size+1);
+      }
+      
 #endif
       packet_deallocate(report);
     } 

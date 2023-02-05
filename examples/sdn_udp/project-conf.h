@@ -60,6 +60,7 @@
 
 #undef TSCH_CONF_DEFAULT_HOPPING_SEQUENCE
 #define TSCH_CONF_DEFAULT_HOPPING_SEQUENCE TSCH_HOPPING_SEQUENCE_16_16
+//#define TSCH_CONF_JOIN_HOPPING_SEQUENCE TSCH_HOPPING_SEQUENCE_1_1
 
 #define TSCH_CONF_AUTOSELECT_TIME_SOURCE 0
 /* 6TiSCH minimal schedule length.
@@ -106,7 +107,7 @@
 /*******************************************************/
 /******************* Configure SDN  ********************/
 /*******************************************************/
-#define SDN_PRINT_ASN    0xCF850
+#define SDN_PRINT_ASN    0xE7EF0
 #define SDN_CONF_ENABLE 1
 #define SDN_CONF_SHARE_SLOT_POSITION 1                      // if =1 -> node fine shared slots positions. if =0 -> just minimal schedule 
 #define SDN_CONF_NBR_TABLE 1
@@ -117,7 +118,17 @@
 //#define SDN_CONF_SHARED_FROM_CTRL_FLOW    1
 //#define SDN_CONF_UNCONTROLLED_EB_SENDING    1
 
+#define SDN_CONF_MAX_CELLS_PER_HOP  10
+
 #define ENERGEST_CONF_ON 1
+
+/*
+To enable MDPI test: 
+enable "SDN_MDPI_TEST"
+set the admission threshold of MDPI to 0.4 and the else to 0.6
+run command: java -Xshare:on -jar ../../tools/cooja/dist/cooja.jar -nogui=config-mdpi.csc -contiki=../../ -log-key=112233
+*/
+#define SDN_MDPI_TEST    1
 
 /* SDN LOG Level */
 #define SDN_LOG_LEVEL                  LOG_LEVEL_INFO

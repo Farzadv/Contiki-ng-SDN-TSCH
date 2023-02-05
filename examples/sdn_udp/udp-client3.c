@@ -49,7 +49,7 @@ AUTOSTART_PROCESSES(&udp_client_process);
 static inline unsigned long
 to_seconds(uint64_t time)
 {
-  return (unsigned long)(time / ENERGEST_SECOND);
+  return (unsigned long)(time / (ENERGEST_SECOND/1000));
 }
 /*---------------------------------------------------------------------------*/
 static void
@@ -75,7 +75,8 @@ PROCESS_THREAD(udp_client_process, ev, data)
 {
   static struct etimer periodic_timer;
   static struct etimer initial_timer;
-  static uint8_t msg[2*LINKADDR_SIZE+6];
+  static int dummy_size = 52; //if change, change following value 52+6 = 58
+  static uint8_t msg[2*LINKADDR_SIZE+58];
   static int tx_count_in_sf = 0;
   //static char str[32];
   uip_ipaddr_t server_ipaddr;
@@ -84,19 +85,52 @@ PROCESS_THREAD(udp_client_process, ev, data)
 
   
   PROCESS_BEGIN();
-  
 #if SDN_ENABLE
   app_qos_request(&udp_conn, &app_qos, TRAFFIC_PERIOD, RELIABILITY, MAX_DELAY, PACKET_SIZE, BURST_SIZE);
 #endif
   /* Initialize UDP connection */
   //udp_conn.qos_attr = app_qos;
-  
+  int en_join_is_printed = 0;
   etimer_set(&initial_timer, CLOCK_SECOND);
   while(num_from_controller_rx_slots == 0){   
     PROCESS_WAIT_UNTIL(etimer_expired(&initial_timer));
     etimer_reset(&initial_timer);
+    if(tsch_current_asn.ls4b > SDN_PRINT_ASN && !en_join_is_printed){
+      en_join_is_printed = 1;
+      energest_flush();
+
+        printf("\nENGY right join->ID[%d%d]", linkaddr_node_addr.u8[0], linkaddr_node_addr.u8[1]);
+        printf(" CPU:%lus LPM:%lus DEEPLPM:%lus Tot_time:%lus",
+           to_seconds(energest_type_time(ENERGEST_TYPE_CPU)),
+           to_seconds(energest_type_time(ENERGEST_TYPE_LPM)),
+           to_seconds(energest_type_time(ENERGEST_TYPE_DEEP_LPM)),
+           to_seconds(ENERGEST_GET_TOTAL_TIME()));
+        printf(" Radio LISTEN:%lus TRANSMIT:%lus OFF:%lus ]]0x%x>>\n",
+           to_seconds(energest_type_time(ENERGEST_TYPE_LISTEN)),
+           to_seconds(energest_type_time(ENERGEST_TYPE_TRANSMIT)),
+           to_seconds(ENERGEST_GET_TOTAL_TIME()
+                      - energest_type_time(ENERGEST_TYPE_TRANSMIT)
+                      - energest_type_time(ENERGEST_TYPE_LISTEN)),
+                      tsch_current_asn.ls4b);
+    }
   }
   //LOG_INFO("num from cells %d\n", num_from_controller_rx_slots);
+  
+  energest_flush();
+
+        printf("\nENGY right join->ID[%d%d]", linkaddr_node_addr.u8[0], linkaddr_node_addr.u8[1]);
+        printf(" CPU:%lus LPM:%lus DEEPLPM:%lus Tot_time:%lus",
+           to_seconds(energest_type_time(ENERGEST_TYPE_CPU)),
+           to_seconds(energest_type_time(ENERGEST_TYPE_LPM)),
+           to_seconds(energest_type_time(ENERGEST_TYPE_DEEP_LPM)),
+           to_seconds(ENERGEST_GET_TOTAL_TIME()));
+        printf(" Radio LISTEN:%lus TRANSMIT:%lus OFF:%lus ]]0x%x>>\n",
+           to_seconds(energest_type_time(ENERGEST_TYPE_LISTEN)),
+           to_seconds(energest_type_time(ENERGEST_TYPE_TRANSMIT)),
+           to_seconds(ENERGEST_GET_TOTAL_TIME()
+                      - energest_type_time(ENERGEST_TYPE_TRANSMIT)
+                      - energest_type_time(ENERGEST_TYPE_LISTEN)),
+                      tsch_current_asn.ls4b);
   
   
   etimer_set(&periodic_timer, (1200 + (random_rand() % 200))*CLOCK_SECOND);  // 15 min initial delay to converge
@@ -135,12 +169,13 @@ PROCESS_THREAD(udp_client_process, ev, data)
            to_seconds(energest_type_time(ENERGEST_TYPE_LPM)),
            to_seconds(energest_type_time(ENERGEST_TYPE_DEEP_LPM)),
            to_seconds(ENERGEST_GET_TOTAL_TIME()));
-  printf(" Radio LISTEN: %lus TRANSMIT:%lus OFF:%lus ]]\n",
+  printf(" Radio LISTEN: %lus TRANSMIT:%lus OFF:%lus ]]0x%x>>\n",
            to_seconds(energest_type_time(ENERGEST_TYPE_LISTEN)),
            to_seconds(energest_type_time(ENERGEST_TYPE_TRANSMIT)),
            to_seconds(ENERGEST_GET_TOTAL_TIME()
                       - energest_type_time(ENERGEST_TYPE_TRANSMIT)
-                      - energest_type_time(ENERGEST_TYPE_LISTEN)));
+                      - energest_type_time(ENERGEST_TYPE_LISTEN)),
+                      tsch_current_asn.ls4b);
   
   first_timeslot = sdn_find_first_timeslot_in_slotframe(&udp_conn.udp_conn->flow_id);
   printf("first timeslot in sf: %d, rep_period: %d \n", first_timeslot, udp_conn.udp_conn->rep_period);
@@ -172,18 +207,23 @@ PROCESS_THREAD(udp_client_process, ev, data)
       //LOG_INFO_("\n");
       //snprintf(str, sizeof(str), "hello %d", count);
       //simple_udp_sendto(&udp_conn, str, strlen(str), &server_ipaddr);
-      for(j = 0; j< LINKADDR_SIZE; ++j){
-        msg[j] = linkaddr_node_addr.u8[j];
-      }
-      msg[2] =  server_ipaddr.u8[14];
-      msg[3] =  server_ipaddr.u8[15];
       
-      msg[4] =  count & 0xFF;
-      msg[5] = (count >> 8)& 0xFF;
-      msg[6] =  tsch_current_asn.ls4b & 0xFF;
-      msg[7] = (tsch_current_asn.ls4b >> 8)& 0xFF;
-      msg[8] = (tsch_current_asn.ls4b >> 16)& 0xFF;
-      msg[9] = (tsch_current_asn.ls4b >> 24)& 0xFF;
+      for(j = 0; j<dummy_size; ++j){
+        msg[j] = dummy_size - j;
+      }
+      
+      for(j = 0; j< LINKADDR_SIZE; ++j){
+        msg[dummy_size + j] = linkaddr_node_addr.u8[j];
+      }
+      msg[dummy_size + 2] =  server_ipaddr.u8[14];
+      msg[dummy_size + 3] =  server_ipaddr.u8[15];
+      
+      msg[dummy_size + 4] =  count & 0xFF;
+      msg[dummy_size + 5] = (count >> 8)& 0xFF;
+      msg[dummy_size + 6] =  tsch_current_asn.ls4b & 0xFF;
+      msg[dummy_size + 7] = (tsch_current_asn.ls4b >> 8)& 0xFF;
+      msg[dummy_size + 8] = (tsch_current_asn.ls4b >> 16)& 0xFF;
+      msg[dummy_size + 9] = (tsch_current_asn.ls4b >> 24)& 0xFF;
       
       
       
@@ -216,18 +256,35 @@ PROCESS_THREAD(udp_client_process, ev, data)
            to_seconds(energest_type_time(ENERGEST_TYPE_LPM)),
            to_seconds(energest_type_time(ENERGEST_TYPE_DEEP_LPM)),
            to_seconds(ENERGEST_GET_TOTAL_TIME()));
-        printf(" Radio LISTEN:%lus TRANSMIT:%lus OFF:%lus ]]\n",
+        printf(" Radio LISTEN:%lus TRANSMIT:%lus OFF:%lus ]]0x%x>>\n",
            to_seconds(energest_type_time(ENERGEST_TYPE_LISTEN)),
            to_seconds(energest_type_time(ENERGEST_TYPE_TRANSMIT)),
            to_seconds(ENERGEST_GET_TOTAL_TIME()
                       - energest_type_time(ENERGEST_TYPE_TRANSMIT)
-                      - energest_type_time(ENERGEST_TYPE_LISTEN)));
+                      - energest_type_time(ENERGEST_TYPE_LISTEN)),
+                      tsch_current_asn.ls4b);
       }
     //} else {
       //LOG_INFO("Not reachable yet\n");
     //}
 
     if(tx_count_in_sf == (SDN_DATA_SLOTFRAME_SIZE / udp_conn.udp_conn->rep_period)) {
+      energest_flush();
+
+      printf("\nENGY iter join->ID[%d%d]", linkaddr_node_addr.u8[0], linkaddr_node_addr.u8[1]);
+      printf(" CPU:%lus LPM:%lus DEEPLPM:%lus Tot_time:%lus",
+           to_seconds(energest_type_time(ENERGEST_TYPE_CPU)),
+           to_seconds(energest_type_time(ENERGEST_TYPE_LPM)),
+           to_seconds(energest_type_time(ENERGEST_TYPE_DEEP_LPM)),
+           to_seconds(ENERGEST_GET_TOTAL_TIME()));
+      printf(" Radio LISTEN:%lus TRANSMIT:%lus OFF:%lus ]]0x%x>>\n",
+           to_seconds(energest_type_time(ENERGEST_TYPE_LISTEN)),
+           to_seconds(energest_type_time(ENERGEST_TYPE_TRANSMIT)),
+           to_seconds(ENERGEST_GET_TOTAL_TIME()
+                      - energest_type_time(ENERGEST_TYPE_TRANSMIT)
+                      - energest_type_time(ENERGEST_TYPE_LISTEN)),
+                      tsch_current_asn.ls4b);
+    
       /* set timer */
       etimer_set(&initial_timer, CLOCK_SECOND/1000);
       while((tsch_current_asn.ls4b % SDN_DATA_SLOTFRAME_SIZE) != 0){   

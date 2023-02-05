@@ -62,7 +62,7 @@ AUTOSTART_PROCESSES(&udp_server_process);
 static inline unsigned long
 to_seconds(uint64_t time)
 {
-  return (unsigned long)(time / ENERGEST_SECOND);
+  return (unsigned long)(time / (ENERGEST_SECOND/1000));
 }
 /*---------------------------------------------------------------------------*/
 static void
@@ -78,20 +78,21 @@ udp_rx_callback(struct simple_udp_connection *c,
   static uint16_t seq_num;
   linkaddr_t src_addr;
   linkaddr_t dest_addr;
+  static int dummy_size = 52;
   
-  src_addr.u8[0] = (uint8_t)data[0];
-  src_addr.u8[1] = (uint8_t)data[1];
+  src_addr.u8[0] = (uint8_t)data[dummy_size + 0];
+  src_addr.u8[1] = (uint8_t)data[dummy_size + 1];
   
-  dest_addr.u8[0] = (uint8_t)data[2];
-  dest_addr.u8[1] = (uint8_t)data[3];
+  dest_addr.u8[0] = (uint8_t)data[dummy_size + 2];
+  dest_addr.u8[1] = (uint8_t)data[dummy_size + 3];
   
-  seq_num =  (uint8_t)data[4] |
-             (uint8_t)data[5] << 8;
+  seq_num =  (uint8_t)data[dummy_size + 4] |
+             (uint8_t)data[dummy_size + 5] << 8;
   
-  sent_asn = (uint8_t)data[6] |
-             (uint8_t)data[7] << 8 |
-             (uint8_t)data[8] << 16 |
-             (uint8_t)data[9] << 24;
+  sent_asn = (uint8_t)data[dummy_size + 6] |
+             (uint8_t)data[dummy_size + 7] << 8 |
+             (uint8_t)data[dummy_size + 8] << 16 |
+             (uint8_t)data[dummy_size + 9] << 24;
   LOG_INFO("11111111 |sr %d%d sr|d %d%d d|s %u s|as 0x%x as|ar 0x%x ar|c %d c|p %d p|", src_addr.u8[0], src_addr.u8[1], dest_addr.u8[0], dest_addr.u8[1], seq_num, sent_asn, tsch_current_asn.ls4b, packetbuf_attr(PACKETBUF_ATTR_CHANNEL), sender_port);
   LOG_INFO_("\n");
   
@@ -101,6 +102,7 @@ udp_rx_callback(struct simple_udp_connection *c,
     print_max_sf_cell_usage();
     print_never_used_cell_num();
     //print_global_table();
+    printf("num ctrl cells [%d]\n", sdn_get_num_ctrl_cells(SDN_CONTROL_SLOTFRAME_SIZE));
     should_print_sch = 1;
   }
 
@@ -234,6 +236,23 @@ PROCESS_THREAD(udp_server_process, ev, data)
         find_asn = 1;
     }
     etimer_reset(&timer);
+ /*   
+    energest_flush();
+
+    printf("\nENGY iter join->ID[%d%d]", linkaddr_node_addr.u8[0], linkaddr_node_addr.u8[1]);
+    printf(" CPU:%lus LPM:%lus DEEPLPM:%lus Tot_time:%lus",
+           to_seconds(energest_type_time(ENERGEST_TYPE_CPU)),
+           to_seconds(energest_type_time(ENERGEST_TYPE_LPM)),
+           to_seconds(energest_type_time(ENERGEST_TYPE_DEEP_LPM)),
+           to_seconds(ENERGEST_GET_TOTAL_TIME()));
+    printf(" Radio LISTEN:%lus TRANSMIT:%lus OFF:%lus ]]0x%x>>\n",
+           to_seconds(energest_type_time(ENERGEST_TYPE_LISTEN)),
+           to_seconds(energest_type_time(ENERGEST_TYPE_TRANSMIT)),
+           to_seconds(ENERGEST_GET_TOTAL_TIME()
+                      - energest_type_time(ENERGEST_TYPE_TRANSMIT)
+                      - energest_type_time(ENERGEST_TYPE_LISTEN)),
+                      tsch_current_asn.ls4b);
+ */
   }
   
   energest_flush();
@@ -244,12 +263,13 @@ PROCESS_THREAD(udp_server_process, ev, data)
            to_seconds(energest_type_time(ENERGEST_TYPE_LPM)),
            to_seconds(energest_type_time(ENERGEST_TYPE_DEEP_LPM)),
            to_seconds(ENERGEST_GET_TOTAL_TIME()));
-  printf(" Radio LISTEN:%lus TRANSMIT:%lus OFF:%lus ]]\n",
+  printf(" Radio LISTEN:%lus TRANSMIT:%lus OFF:%lus ]]0x%x>>\n",
            to_seconds(energest_type_time(ENERGEST_TYPE_LISTEN)),
            to_seconds(energest_type_time(ENERGEST_TYPE_TRANSMIT)),
            to_seconds(ENERGEST_GET_TOTAL_TIME()
                       - energest_type_time(ENERGEST_TYPE_TRANSMIT)
-                      - energest_type_time(ENERGEST_TYPE_LISTEN)));
+                      - energest_type_time(ENERGEST_TYPE_LISTEN)),
+                      tsch_current_asn.ls4b);
 
   PROCESS_END();
 }

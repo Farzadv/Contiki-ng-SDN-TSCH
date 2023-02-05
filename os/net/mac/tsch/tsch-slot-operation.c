@@ -432,13 +432,13 @@ get_packet_and_flow_for_link(struct tsch_link *link, struct tsch_neighbor **targ
         n = n_eb;
         p = tsch_queue_get_packet_for_nbr(n, link);
         
-        /*
-        if(p != NULL){
+        
+ /*       if(p != NULL){
           TSCH_LOG_ADD(tsch_log_message,
                 snprintf(log->message, sizeof(log->message),
                 "sent EB at asn: 0x%x]]", tsch_current_asn.ls4b));
         }
-        */
+ */       
         /*
         TSCH_LOG_ADD(tsch_log_message,
                 snprintf(log->message, sizeof(log->message),
@@ -739,6 +739,11 @@ PT_THREAD(tsch_tx_slot(struct pt *pt, struct rtimer *t))
           TSCH_DEBUG_TX_EVENT();
           /* send packet already in radio tx buffer */
           mac_tx_status = NETSTACK_RADIO.transmit(packet_len);
+          if(mac_tx_status != 0) {
+          TSCH_LOG_ADD(tsch_log_message,
+                        snprintf(log->message, sizeof(log->message),
+                        "mac error 0: %d", mac_tx_status));
+          }
           tx_count++;
           /* Save tx timestamp */
           tx_start_time = current_slot_start + tsch_timing[tsch_ts_tx_offset];
@@ -867,10 +872,16 @@ PT_THREAD(tsch_tx_slot(struct pt *pt, struct rtimer *t))
             }
           } else {
             mac_tx_status = MAC_TX_ERR;
+            TSCH_LOG_ADD(tsch_log_message,
+                        snprintf(log->message, sizeof(log->message),
+                        "mac error 2"));
           }
         }
       } else {
         mac_tx_status = MAC_TX_ERR;
+        TSCH_LOG_ADD(tsch_log_message,
+                        snprintf(log->message, sizeof(log->message),
+                        "mac error 3: packet_ready: %d, NET:%d", packet_ready, NETSTACK_RADIO.prepare(packet, packet_len)));
       }
     }
 
