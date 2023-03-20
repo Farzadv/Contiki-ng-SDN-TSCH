@@ -393,8 +393,15 @@ sdn_handle_config_packet(struct sdn_packet *p, uint16_t len, const linkaddr_t *s
 		               LINK_TYPE_NORMAL, &link.addr, link.slot + (m * repe_period), 
 	                       link.channel_offset, 1); 
 	                       
-	  if(!sdn_is_joined && linkaddr_cmp(&link.flow_id, &flow_id_from_controller)) {
+	  int fid_to_exsit = sdn_is_flowid_exist_in_table(&flow_id_to_controller);             
+	  if(!sdn_is_joined && fid_to_exsit > 0 && linkaddr_cmp(&link.flow_id, &flow_id_from_controller)) {
 	    sdn_is_joined = 1;
+	    tsch_queue_update_time_source(&link.addr);
+	    printf("sdn-handle: fix time source as SDN parent \n");
+          } else if (!sdn_is_joined && num_from_controller_rx_slots > 0 && linkaddr_cmp(&link.flow_id, &flow_id_to_controller)) {
+            sdn_is_joined = 1;
+            tsch_queue_update_time_source(&link.addr);
+            printf("sdn-handle: fix time source as SDN parent \n");
           }
         
 	  //count slots coresspond to from_controller flow id
@@ -462,9 +469,16 @@ sdn_handle_config_packet(struct sdn_packet *p, uint16_t len, const linkaddr_t *s
 		               LINK_TYPE_NORMAL, &link.addr, link.slot + (m * repe_period), 
 	                       link.channel_offset, 1);  
 	                       
-	  if(!sdn_is_joined && linkaddr_cmp(&link.flow_id, &flow_id_from_controller)) {
+	  int fid_to_exsit = sdn_is_flowid_exist_in_table(&flow_id_to_controller);             
+	  if(!sdn_is_joined && fid_to_exsit > 0 && linkaddr_cmp(&link.flow_id, &flow_id_from_controller)) {
 	    sdn_is_joined = 1;
-          }
+	    tsch_queue_update_time_source(&link.addr);
+	    printf("sdn-handle: fix time source as SDN parent \n");
+          } else if (!sdn_is_joined && num_from_controller_rx_slots > 0 && linkaddr_cmp(&link.flow_id, &flow_id_to_controller)) {
+            sdn_is_joined = 1;
+            tsch_queue_update_time_source(&link.addr);
+            printf("sdn-handle: fix time source as SDN parent \n");
+          } 
         
 	   //count slots coresspond to from_controller flow id
           if(linkaddr_cmp(&link.flow_id, &flow_id_from_controller)) {
@@ -485,6 +499,7 @@ sdn_handle_config_packet(struct sdn_packet *p, uint16_t len, const linkaddr_t *s
   }
   
   // relay the Config packet
+  int fid_to_ctrl_exsit;
   if(((p->typ & 0xf0)>>4 == 1) && (is_first_node_in_src_route || is_middle_node_in_src_route)) {
     if(linkaddr_cmp(&config_flow_id, &flow_id_to_controller) && 
       (p->payload[CONF_NUM_SOURCE_ROUTING_NODE_INDEX] - 1) == position_in_src_route_list) {
@@ -492,24 +507,44 @@ sdn_handle_config_packet(struct sdn_packet *p, uint16_t len, const linkaddr_t *s
       packetbuf_clear();
       packetbuf_copyfrom((uint8_t *)p, len);
       sdn_output(&next_hop_addr, &flow_id_shared_cell, 1, NULL);
+      
+      
     } else if(linkaddr_cmp(&config_flow_id, &flow_id_from_controller) && 
              (p->payload[CONF_NUM_SOURCE_ROUTING_NODE_INDEX] - 2) == position_in_src_route_list) {
       LOG_INFO("config for novel node: fid->from_ctrl, 2 befor last node\n");
       packetbuf_clear();
       packetbuf_copyfrom((uint8_t *)p, len);
       sdn_output(&next_hop_addr, &flow_id_shared_cell, 1, NULL);
+      
+      
     } else if(linkaddr_cmp(&config_flow_id, &flow_id_from_controller) && 
-             (p->payload[CONF_NUM_SOURCE_ROUTING_NODE_INDEX] - 1) == position_in_src_route_list) {
+             (p->payload[CONF_NUM_SOURCE_ROUTING_NODE_INDEX] - 1) == position_in_src_route_list &&
+             (fid_to_ctrl_exsit = sdn_is_flowid_exist_in_table(&flow_id_to_controller)) > 0) {
+             
       LOG_INFO("config for novel node: fid->from_ctrl, 1 befor last node\n");
       packetbuf_clear();
       packetbuf_copyfrom((uint8_t *)p, len);
       sdn_output(&next_hop_addr, &flow_id_to_controller, 1, NULL);
+      
+      
+    } else if(linkaddr_cmp(&config_flow_id, &flow_id_from_controller) && 
+             (p->payload[CONF_NUM_SOURCE_ROUTING_NODE_INDEX] - 1) == position_in_src_route_list &&
+             (fid_to_ctrl_exsit = sdn_is_flowid_exist_in_table(&flow_id_to_controller)) == 0) {
+             
+      LOG_INFO("config for novel node: fid->from_ctrl, 1 befor last node: no to-cont so handle on shar\n");
+      packetbuf_clear();
+      packetbuf_copyfrom((uint8_t *)p, len);
+      sdn_output(&next_hop_addr, &flow_id_shared_cell, 1, NULL);  
+      
+        
     } else{
       LOG_INFO("config for novel node: fid->from_ctrl, relay middle node\n");
       packetbuf_clear();
       packetbuf_copyfrom((uint8_t *)p, len);
       sdn_output(&next_hop_addr, &flow_id_from_controller, 1, NULL);
     }  
+    
+    
   } else if(((p->typ & 0xf0)>>4 == 0) && (is_first_node_in_src_route || is_middle_node_in_src_route)) {
     if(need_to_send_by_to_ctrl_fid > 0) {
       LOG_INFO("config for join node: fid->to_ctrl\n");

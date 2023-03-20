@@ -14,6 +14,13 @@
 #endif
 
 
+/* the ratio threshold for selecting best neighbors */
+#ifdef SDN_CONF_TRSHLD_BETS_NBRS
+#define SDN_TRSHLD_BETS_NBRS   SDN_CONF_TRSHLD_BETS_NBRS
+#else
+#define SDN_TRSHLD_BETS_NBRS   0.84
+#endif
+
 /* Enable SDN node to construct a neighbor table based received EBs */
 #ifdef SDN_CONF_NBR_TABLE
 #define SDN_NBR_TABLE SDN_CONF_NBR_TABLE

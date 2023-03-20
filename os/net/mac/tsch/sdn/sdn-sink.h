@@ -57,7 +57,7 @@ struct nbr{
   uint16_t total_report_count;  
 };
 
-#define NBR_LIST_LEN 50
+#define NBR_LIST_LEN 60
 
 struct nbrs_info{
   struct nbrs_info *next;

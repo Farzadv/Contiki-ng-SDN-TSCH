@@ -133,7 +133,12 @@ PROCESS_THREAD(udp_client_process, ev, data)
                       tsch_current_asn.ls4b);
   
   
-  etimer_set(&periodic_timer, (1200 + (random_rand() % 200))*CLOCK_SECOND);  // 15 min initial delay to converge
+  /* we make this delay to let the SDN network converge first, then node can send their flow-req to the controller.
+     else, in large network sizes the sink experience a storm of join request + flow-req, because the early joined node try to send
+     their flow-req while some far nodes still try to join the SDN network -> consequently we have incease in both convergence time
+     and data flow config time (queue delay of sink node) */
+  etimer_set(&periodic_timer, (6 * SDN_REPORT_PERIOD + (random_rand() % 200)) * CLOCK_SECOND);  // 2000 sec ~  min initial delay to converge
+  //etimer_set(&periodic_timer, (1200 + (random_rand() % 200))*CLOCK_SECOND);  // 15 min initial delay to converge
   PROCESS_WAIT_UNTIL(etimer_expired(&periodic_timer));
   
   

@@ -21,7 +21,7 @@
 #define LOG_LEVEL SDN_SINK_LOG_LEVEL
 
 
-static float POS_ARRAY[10][2] = {{0.0, 0.0}, {-2.88, 11.6}, {9.28, 4.26}, {1.35, -0.48}, {-8.39, 0.17}, {16.17, 2.45}, {4.04, -5.93}, {-11.65, 6.66}, {-8.38, -5.82}, {8.13, -3.29}};
+static float POS_ARRAY[50][2] = {{0.0, 0.0}, {1.67, 1.42}, {-15.92, 20.44}, {-21.18, -19.28}, {22.13, 11.94}, {-5.31, -18.47}, {-0.25, -26.5}, {-32.22, 6.12}, {-41.34, 31.15}, {-40.2, -41.07}, {30.02, 42.24}, {36.12, -12.6}, {25.84, -20.18}, {2.89, -46.61}, {18.63, -44.15}, {-57.96, 4.43}, {-56.03, 11.21}, {-62.53, 35.2}, {-56.62, 49.12}, {-68.46, -34.24}, {-51.59, -32.78}, {-55.72, -34.3}, {-35.92, -72.06}, {-36.12, -63.52}, {-15.67, -55.95}, {39.33, 39.48}, {56.31, 41.25}, {57.13, 27.69}, {27.65, 70.47}, {25.42, 67.0}, {43.48, -25.69}, {32.84, -25.5}, {36.6, -54.59}, {-82.59, -5.73}, {-86.93, -1.13}, {-50.76, 61.69}, {-77.81, -36.23}, {62.54, 34.16}, {68.93, 55.53}, {71.43, 50.32}, {84.93, 15.51}, {10.9, 67.61}, {47.1, 74.29}, {-2.84, 63.82}, {72.98, -25.25}, {24.54, -76.51}, {30.23, -77.93}, {79.59, 1.18}, {-9.33, 63.43}, {-7.02, 54.83}};
 
 static linkaddr_t last_flow_id = {{ 0x08, 0x00 }};
 static float coef = 0.5;
@@ -30,7 +30,7 @@ static float coef = 0.5;
 #elif SDN_MDPI_TEST
 #define ADMIT_FLOW_PDR        0.4
 #else
-#define ADMIT_FLOW_PDR        0.6   // graph p = 0.9 : what 0.84? consider one EB lower than expected -> exp =20, 0.84 = (.9*20 - 1)/20
+#define ADMIT_FLOW_PDR   SDN_TRSHLD_BETS_NBRS   // graph p = 0.9 : what 0.84? consider one EB lower than expected -> exp =20, 0.84 = (.9*20 - 1)/20
 #endif
 //static float coef_link_pdr = 0.9;
 #define GLOBAL_TS_LIST_LEN    SDN_DATA_SLOTFRAME_SIZE
@@ -49,7 +49,7 @@ static int shared_cell_alloc_list[max_sf_offset_num][SDN_DATA_SLOTFRAME_SIZE];
 
 
 linkaddr_t sink_addr;
-#define MAX_NUM_PENDING_CONFIG   3
+#define MAX_NUM_PENDING_CONFIG   15 // set same as the queue size
 
 /*---------------------------------------------------------------------------*/
 /* Declaration */
@@ -83,6 +83,8 @@ void alloc_eb_shared_cell_to_sink(void);
 int get_first_free_shared_timeslot(void);
 
 int calculate_num_shared_cell(void);
+
+void trigger_from_controller_config_immediately(const linkaddr_t *sender_addr);
 
 /*---------------------------------------------------------------------------*/
 /* list of shared cells */
@@ -655,22 +657,40 @@ sdn_add_node_to_global_table(const linkaddr_t *node_addr, const linkaddr_t *pare
 }
 /*---------------------------------------------------------------------------*/
 int 
-allocate_cell_per_hop(int sink_to_dest_num, int dest_to_src_num, struct rsrc_spec_of_config *req_spec, struct sdn_packet *config)
+allocate_cell_per_hop(const int sink_to_dest_num, const int dest_to_src_num, struct rsrc_spec_of_config *req_spec, struct sdn_packet *config)
 { 
 
   if(config == NULL || req_spec== NULL) {
+    LOG_ERR("CONTROLLER: config or req spec is NULL\n");
+    return 0;
+  }
+  
+  if(sink_to_dest_num < 0 || dest_to_src_num <= 0) {
+    LOG_ERR("CONTROLLER: path length is ZERO: node %d%d, fid %d \n", req_spec->src_addr.u8[0], req_spec->src_addr.u8[1], req_spec->flow_id.u8[0]);
     return 0;
   }
 
   struct flow_hops_cells l[dest_to_src_num-1];
   struct flow_hops_cells l_ideal[dest_to_src_num-1]; /* Just for statistics: this list is just for calculating the ideal number of 
                                                         cell correspond to the simulator's link quality. we do it directly in the firmware.*/
+  int i;                                                    
+  for(i=0; i<sink_to_dest_num; i++) {
+    l[i].pdr_link = 1;
+    l[i].cell_num = 1;
+    l[i].pdr_n_tx = 1;
+    linkaddr_copy(&l[i].node_addr, &linkaddr_null);
+    
+    l_ideal[i].pdr_link = 1;
+    l_ideal[i].cell_num = 1;
+    l_ideal[i].pdr_n_tx = 1;
+    linkaddr_copy(&l_ideal[i].node_addr, &linkaddr_null);
+  }
 
-  int i;
+  
   int j;
   int k;
-  //int no_addr1;
-  //int no_addr2;
+  int no_addr1;
+  int no_addr2;
   int sum_cells = 0;
   int sum_cells_real = 0;
   float e2e_pdr = 1;
@@ -725,8 +745,8 @@ allocate_cell_per_hop(int sink_to_dest_num, int dest_to_src_num, struct rsrc_spe
     if(e1 == NULL || e2 == NULL) {
       return 0;
     }
-    //no_addr1 = 1;
-    //no_addr2 = 1;
+    no_addr1 = 1;
+    no_addr2 = 1;
     for(k=0; k<NBR_LIST_LEN; k++) {
       if(linkaddr_cmp(&e1->nbr_list[k].nbr_addr, &addr2)) {
         
@@ -761,14 +781,15 @@ allocate_cell_per_hop(int sink_to_dest_num, int dest_to_src_num, struct rsrc_spe
                 revers_direction_pdr = 0.999;
               }
               
-              revers_direction_pdr = 0.95 * revers_direction_pdr;
+              revers_direction_pdr = 0.9 * revers_direction_pdr;
             } else {
               revers_direction_pdr = 0;
             }
 #if SDN_MDPI_TEST //artificially set link as perfect to check the behavior of MDPI paper
             revers_direction_pdr = 0.999;
 #endif
-            //no_addr2 = 0;
+            no_addr2 = 0;
+            break;
           }
         }
         
@@ -872,16 +893,16 @@ allocate_cell_per_hop(int sink_to_dest_num, int dest_to_src_num, struct rsrc_spe
         e2e_pdr = e2e_pdr * l[i].pdr_n_tx;
         e2e_pdr_ideal = e2e_pdr_ideal * l_ideal[i].pdr_n_tx;
         
-        //no_addr1 = 0;
+        no_addr1 = 0;
         break;
       }
     } 
-/*    if(no_addr1 == 1 || no_addr2 == 1) {
+    if(no_addr1 == 1 || no_addr2 == 1) {
       //print_global_nbr_table();
       LOG_ERR("CONTROLLER: cell alloc per hop -> there is no addr %d%d in NBR list of %d%d\n", addr2.u8[0], addr2.u8[1], addr1.u8[0], addr1.u8[1]);
       return 0;
     } 
-*/  
+  
   }
   
   //LOG_ERR("CONTROLLER: e2e pdr first round %f \n", e2e_pdr);
@@ -1023,7 +1044,7 @@ add_source_routing_info_to_config(struct request_id *req_id, struct rsrc_spec_of
   
   int sum_cell_hops = 0;
   uint8_t j;
-  uint8_t num_node_from_sink_to_dest;
+  uint8_t num_node_from_sink_to_dest = 0;
   uint8_t curr_list_index = LEN_OF_SR_LIST;
   int counter = CONF_LIST_OF_NODE_IN_PATH_INDEX;
   //struct cell_info *free_cell = NULL;
@@ -1064,7 +1085,7 @@ add_source_routing_info_to_config(struct request_id *req_id, struct rsrc_spec_of
   int data_path_list_index = LEN_OF_SR_LIST;
   uint8_t num_node_dest_to_sink;
   uint8_t num_node_src_to_sink;
-  uint8_t num_data_node;
+  uint8_t num_data_node = 0;
   
   // dest(destination) to sink
   linkaddr_copy(&temp_par_addr, &req_spec->dest_addr);
@@ -1638,6 +1659,13 @@ handle_config_ack_packet(struct sdn_packet* ack)
     for(e = list_head(sent_config_list); e != NULL; e = e->next) { 
       if(linkaddr_cmp(&e->ack_sender, &ack_sender) && e->seq_num == seq_num) {
         e->is_acked = 1;
+        
+        /* if this is the ack of to-controller config, immediatly send from-controller
+           config now */
+       /* if(e->req_id.is_ctrl == 1 && e->req_id.req_num == flow_id_to_controller.u8[0]) {
+          trigger_from_controller_config_immediately(&ack_sender);
+        }
+       */
       }
     }
     //print_sent_config_list();
@@ -1835,6 +1863,66 @@ get_request_id(struct sdn_packet* p)
   }
   
   return req_id;
+}
+/*---------------------------------------------------------------------------*/
+/* when receiving the ack of to-controller config, trigger from-controller 
+   config to install */
+void
+trigger_from_controller_config_immediately(const linkaddr_t *sender_addr)
+{
+  struct request_id *req_id = (struct request_id *) malloc(sizeof(struct request_id));
+  struct rsrc_spec_of_config *req_spec = (struct rsrc_spec_of_config *) malloc(sizeof(struct rsrc_spec_of_config));
+  linkaddr_t *parent_addr = NULL;
+  struct sdn_packet_info *created_conf = NULL;
+  
+  
+  if(sender_addr == NULL) {
+    LOG_INFO("CONTROLLER: immediat to-cont failed -> node addr is null\n");
+    return;
+  }
+  
+  /* make req-id */
+  req_id->req_num = flow_id_from_controller.u8[0];
+  req_id->is_ctrl = 1;
+  linkaddr_copy(&req_id->req_sender, sender_addr);
+  
+  /* specify req-spec */
+  linkaddr_copy(&req_spec->flow_id, &flow_id_from_controller);
+  linkaddr_copy(&req_spec->dest_addr, sender_addr);
+  if((parent_addr = get_parent_from_node_addr(sender_addr)) != NULL) {
+    linkaddr_copy(&req_spec->src_addr, parent_addr);
+  } else {
+    LOG_INFO("CONTROLLER: immediat to-cont failed -> parent addr is null\n");
+    return;
+  } 
+  LOG_INFO("CONTROLLER: (immed-conf) report addr:id %d:%d\n",sender_addr->u8[1], req_id->req_num);
+  
+  
+  req_spec->app_qos.traffic_period = SDN_SF_REP_PERIOD;
+  req_spec->sf_id = 0;
+  req_spec->num_ts = 1;
+  req_spec->ch_off = 0;
+  
+  
+  if(req_spec != NULL && req_id != NULL && !linkaddr_cmp(&req_spec->dest_addr, &linkaddr_null)) {
+    created_conf = request_confing_packet(req_id, req_spec);
+  }
+  
+  if(created_conf != NULL) {
+    int i;
+    LOG_INFO("created conf-best len %u\n", created_conf->len);
+    for (i=0; i<created_conf->len -1; i++) {
+      LOG_INFO("created config-best %u\n", created_conf->packet.payload[i]);
+    }
+    sdn_handle_config_packet(&created_conf->packet, created_conf->len, &linkaddr_null);
+  }
+  
+  if(req_id != NULL) { 
+    free(req_id); 
+  }
+  if(req_spec != NULL) {
+    free(req_spec);
+  }
 }
 /*---------------------------------------------------------------------------*/
 /* this function determines the resource spec from the content of request packet */
@@ -2039,6 +2127,7 @@ sdn_send_packet_to_controller(const uint8_t *buf, uint16_t len, const linkaddr_t
         }
       }
       if(nonack_config > MAX_NUM_PENDING_CONFIG) {
+        LOG_INFO("CONTROLLER: reach to MAX_NUM_PENDING_CONFIG -> reject flow \n");
         break;
       }
        
@@ -2048,7 +2137,7 @@ sdn_send_packet_to_controller(const uint8_t *buf, uint16_t len, const linkaddr_t
         req_spec = get_resource_spec_from_request(p, req_id);
         
         if(!linkaddr_cmp(&req_spec->dest_addr, &linkaddr_null)) {
-          printf(" update report \n");
+          LOG_INFO("update report \n");
           update_node_nbr_list(p);
         }
         
@@ -2061,6 +2150,13 @@ sdn_send_packet_to_controller(const uint8_t *buf, uint16_t len, const linkaddr_t
             LOG_INFO("created config-best %u\n", created_conf->packet.payload[i]);
           }
           sdn_handle_config_packet(&created_conf->packet, created_conf->len, &linkaddr_null);
+          
+#if !SDN_SHARED_CONTROL_PLANE
+          /* if configuring to-controller flow-id triger the from-controller now: */
+          if(req_id->is_ctrl == 1 && req_id->req_num == flow_id_to_controller.u8[0]) {
+            trigger_from_controller_config_immediately(&req_id->req_sender);
+          }
+#endif          
           //print_global_table();
         } 
          
@@ -2249,9 +2345,10 @@ void
 init_num_shared_cells(void)
 {
 
-  float cell_ratio = (float)NETWORK_SIZE/(int)((TSCH_EB_PERIOD/10) / SDN_DATA_SLOTFRAME_SIZE);
+  //float cell_ratio = (float)NETWORK_SIZE/(int)((TSCH_EB_PERIOD/10) / SDN_DATA_SLOTFRAME_SIZE);
 
-  int extra_shared_cells = calculate_num_shared_cell();
+  //int extra_shared_cells = calculate_num_shared_cell();
+  
   //printf("cell ration0: %f, eb/sf: %d\n", cell_ratio, (int)((TSCH_EB_PERIOD/10) / SDN_DATA_SLOTFRAME_SIZE));
   //printf("cell ration diff: %f", cell_ratio - (int)cell_ratio);
   /*if(NETWORK_SIZE > 0) {
@@ -2271,10 +2368,10 @@ init_num_shared_cells(void)
   }
   */
   //printf("cell ration2: %f\n", cell_ratio);
-//#if SDN_SHARED_CONTROL_PLANE
-  sdn_num_shared_cell = (int)(cell_ratio + extra_shared_cells);
-  //sdn_num_shared_cell = NETWORK_SIZE * 15;
-//#endif
+#if SDN_SHARED_CONTROL_PLANE
+  //sdn_num_shared_cell = (int)(cell_ratio + extra_shared_cells);
+  sdn_num_shared_cell = NETWORK_SIZE * 15;
+#endif
   sdn_num_shared_cell_in_rep = (int)ceil(((float)sdn_num_shared_cell / (float)(SDN_DATA_SLOTFRAME_SIZE / SDN_SF_REP_PERIOD)));
                                //(int)ceil((float)((float)sdn_num_shared_cell / (float)num_rep))
   printf("sdn_num_shared_cell: %d, sdn_num_shared_cell_in_rep: %d\n", sdn_num_shared_cell, sdn_num_shared_cell_in_rep);

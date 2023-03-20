@@ -89,7 +89,11 @@
 
 // Not sure why I add these 2 lines?
 //#define QUEUEBUF_CONF_NUM                  128
+#if SINK
+#define TSCH_QUEUE_CONF_NUM_PER_NEIGHBOR     32
+#else
 #define TSCH_QUEUE_CONF_NUM_PER_NEIGHBOR     16
+#endif
 /*******************************************************/
 /******************* UIP Configure  ********************/
 /*******************************************************/
@@ -112,7 +116,7 @@
 #define SDN_CONF_SHARE_SLOT_POSITION 1                      // if =1 -> node fine shared slots positions. if =0 -> just minimal schedule 
 #define SDN_CONF_NBR_TABLE 1
 #define SDN_CONF_LINK_METRIC EB_NUM
-#define SDN_CONF_REPORT_PERIOD   (20 * 1506 / 100)          
+#define SDN_CONF_REPORT_PERIOD   (20 * 1506 / 100)         
 //#define SDN_CONF_NUM_SHARED_CELL_IN_REP  20               // num shared cells per sub-SF repetition
 //#define SDN_CONF_SHARED_CONTROL_PLANE       1 
 //#define SDN_CONF_SHARED_FROM_CTRL_FLOW    1
@@ -128,7 +132,7 @@ enable "SDN_MDPI_TEST"
 set the admission threshold of MDPI to 0.4 and the else to 0.6
 run command: java -Xshare:on -jar ../../tools/cooja/dist/cooja.jar -nogui=config-mdpi.csc -contiki=../../ -log-key=112233
 */
-#define SDN_MDPI_TEST    1
+#define SDN_MDPI_TEST    0
 
 /* SDN LOG Level */
 #define SDN_LOG_LEVEL                  LOG_LEVEL_INFO
@@ -138,7 +142,7 @@ run command: java -Xshare:on -jar ../../tools/cooja/dist/cooja.jar -nogui=config
 #define SDN_ALGO_LOG_LEVEL             LOG_LEVEL_INFO
 #define SDN_REQ_FLOW_LOG_LEVEL         LOG_LEVEL_INFO
 #define SDN_SINK_LOG_LEVEL             LOG_LEVEL_INFO
-#define SDN_CLIENT_APP_LOG_LEVEL       LOG_LEVEL_INFO
+#define SDN_CLIENT_APP_LOG_LEVEL       LOG_LEVEL_WARN
 #define SDN_SERVER_APP_LOG_LEVEL       LOG_LEVEL_INFO
 #define SDN_STATIS_LOG_LEVEL           LOG_LEVEL_INFO
 #define TSCH_LOG_SDN_PER_SLOT          0     // enable per slot log

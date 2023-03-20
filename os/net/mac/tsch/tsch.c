@@ -107,6 +107,8 @@ NBR_TABLE(struct eb_stat, eb_stats);
 struct sdn_nbr {
   uint8_t rx_eb_count;
   uint8_t rssi;
+  uint8_t ratio;
+  struct tsch_asn_t first_asn;
 };
 NBR_TABLE(struct sdn_nbr, sdn_nbrs);
 #endif
@@ -149,6 +151,7 @@ int num_from_controller_rx_slots = 0;
 int sdn__sf_offset_to_send_eb = -1;
 int sdn__ts_offset_to_send_eb = -1;
 uint16_t sdn_max_used_sf_offs = 0;
+int ready_to_start_report = 0;
 //#if SINK
 //static linkaddr_t src=         {{ 0x02, 0x00 }};
 //#endif
@@ -534,25 +537,90 @@ eb_input(struct input_packet *current_input)
 /*--------------------------------veisi--------------------------------------*/
 /* Fill SDN neighbor table */
 #if SDN_NBR_TABLE
+  int is_first_nbr_seen = 0;
   struct sdn_nbr *stat = (struct sdn_nbr *)nbr_table_get_from_lladdr(sdn_nbrs, (linkaddr_t *)&frame.src_addr);
-      if(stat == NULL) {
-        stat = (struct sdn_nbr *)nbr_table_add_lladdr(sdn_nbrs, (linkaddr_t *)&frame.src_addr, NBR_TABLE_REASON_MAC, NULL);
-      }
-      if(stat != NULL) {
-        stat->rx_eb_count++;
-        stat-> rssi = (int16_t)packetbuf_attr(PACKETBUF_ATTR_RSSI);
-      }
-/* print SDN table list */
-  int x = 0;
-  stat = nbr_table_head(sdn_nbrs);
-  while(stat != NULL){
-    //printf("SDN Neighbor: \n");
-    //LOG_INFO_LLADDR(nbr_table_get_lladdr(sdn_nbrs, stat));
-    //printf(" RSSI: %d with EB number: %d \n", stat->rssi, stat->rx_eb_count);
-    stat = nbr_table_next(sdn_nbrs, stat);
-    x = x +1;
+  if(stat == NULL) {
+    stat = (struct sdn_nbr *)nbr_table_add_lladdr(sdn_nbrs, (linkaddr_t *)&frame.src_addr, NBR_TABLE_REASON_MAC, NULL);
+    is_first_nbr_seen = 1;
   }
-    //printf("SDN Neighbor Num : %d \n", x);
+  
+  if(stat != NULL) {
+    stat->rx_eb_count++;
+    stat->rssi = (int16_t)packetbuf_attr(PACKETBUF_ATTR_RSSI);
+    if(is_first_nbr_seen) {
+      stat->first_asn = tsch_current_asn;
+      stat->ratio = 100;
+    } else {
+      int vali = ((int)(TSCH_ASN_DIFF(tsch_current_asn, stat->first_asn) / (TSCH_EB_PERIOD/10)) + 1);
+      if(vali > 0) {
+        stat->ratio = (int)((float)((float)stat->rx_eb_count / (float)vali) * 100);
+      } else {
+        LOG_WARN("vali is wrong !\n");
+        stat->ratio = 0;
+      }
+      //printf("receive an EB, curr ratio: %d, eb num: %d, vali: %d\n", stat->ratio, stat->rx_eb_count, vali);
+    }
+  }
+  
+  
+  /* check condition whether send first report packet or no? */
+  if(!ready_to_start_report) {
+    int is_time_start_report = 0;
+    stat = nbr_table_head(sdn_nbrs);
+    int do_not_check = 0;
+    while(stat != NULL) {
+      //printf("SDN Neighbor: \n");
+      //LOG_INFO_LLADDR(nbr_table_get_lladdr(sdn_nbrs, stat));
+      //printf(" RSSI: %d with EB number: %d \n", stat->rssi, stat->rx_eb_count);
+      
+      /* update ratio of all NBRs when receiving a new EB */
+      int vali = ((int)(TSCH_ASN_DIFF(tsch_current_asn, stat->first_asn) / (TSCH_EB_PERIOD/10)) + 1);
+      if(vali > 0) {
+        stat->ratio = (int)((float)((float)stat->rx_eb_count / (float)vali) * 100);
+      }
+    
+      if(stat->ratio > (int)(SDN_TRSHLD_BETS_NBRS * 100) && !do_not_check) {
+        if(TSCH_ASN_DIFF(tsch_current_asn, stat->first_asn) >= (SDN_REPORT_PERIOD * 100)) {
+          is_time_start_report = 1;
+        } else {
+          is_time_start_report = 0;
+          do_not_check = 1;
+        }
+      }
+    
+      /* there is a perfect NBR: no need to wait more */
+/*      if(stat->ratio > (int)(0.9 * 100) && TSCH_ASN_DIFF(tsch_current_asn, stat->first_asn) >= (SDN_REPORT_PERIOD * 100)) {
+        is_time_start_report = 1;
+        printf("find nbr sooner ratio:%d, asn dif: %d: %d\n", stat->ratio, TSCH_ASN_DIFF(tsch_current_asn, stat->first_asn), SDN_REPORT_PERIOD * 100);
+        break;
+      }
+*/    
+      stat = nbr_table_next(sdn_nbrs, stat);
+    }
+    
+  
+    if(is_time_start_report) {
+      ready_to_start_report = 1;
+      printf("ready to start report: %d\n", SDN_REPORT_PERIOD * 100);
+    }
+  }
+  
+  /* update time source: select the nbr with highest EB ratio */
+  if(!sdn_is_joined) {
+    struct sdn_nbr *best_sdn_stat = NULL;
+    stat = nbr_table_head(sdn_nbrs);
+    int max_ratio = 0;
+    while(stat != NULL) {
+      if(stat->ratio > max_ratio){
+        max_ratio = stat->ratio;
+        best_sdn_stat = stat;
+      }     
+      stat = nbr_table_next(sdn_nbrs, stat);
+    }
+    if(best_sdn_stat != NULL) {
+      tsch_queue_update_time_source(nbr_table_get_lladdr(sdn_nbrs, best_sdn_stat));
+    }
+  }
 
 #endif
 
@@ -704,6 +772,7 @@ tsch_start_coordinator(void)
 /* veisi: set sink=coordinator joined to SDN network */
 #if SDN_ENABLE 
   sdn_is_joined = 1;
+  ready_to_start_report = 1;
   sdn__sf_offset_to_send_eb = sdn_get_sink_sf_eb_offset();
   sdn__ts_offset_to_send_eb = sdn_get_sink_ts_eb_offset();
   //printf("sink sf offs %d, %d \n", sdn__sf_offset_to_send_eb, sdn__ts_offset_to_send_eb);
@@ -1168,28 +1237,33 @@ purge_sdn_nbr_table(void){
 PROCESS_THREAD(sdn_report_process, ev, data)
 {
   static struct etimer report_timer;
-  static struct etimer sf_offset_timer;
+  static struct etimer init_timer;
+  //static struct etimer sf_offset_timer;
   static uint8_t report_seq = 0;
   uint8_t report_size = R_NBR_NUB_INDEX +1;
   //uint16_t slotframe_offset = 10;
 //sdn_ie
 
+#if SDN_SHARED_FROM_CTRL_FLOW || SDN_SHARED_CONTROL_PLANE
+  int parent_is_set = 0;
+#endif
+
 
   PROCESS_BEGIN();
 
-  /* Wait until association */
-  etimer_set(&report_timer, CLOCK_SECOND / 10);
-  etimer_set(&sf_offset_timer, CLOCK_SECOND / 10);
   
   while(1) {
-
+  /* Wait until association */
+  etimer_set(&report_timer, CLOCK_SECOND / 10);
+  //etimer_set(&sf_offset_timer, CLOCK_SECOND / 10);
+  
   while(!tsch_is_associated) {
     PROCESS_WAIT_UNTIL(etimer_expired(&report_timer));
     etimer_reset(&report_timer);
   }
   // make a random delay in joining process to avoid congestion of join requests in controller
-  etimer_set(&report_timer, (random_rand() % 300) * CLOCK_SECOND);
-  PROCESS_WAIT_UNTIL(etimer_expired(&report_timer));
+  //etimer_set(&report_timer, 1 * CLOCK_SECOND);
+  //PROCESS_WAIT_UNTIL(etimer_expired(&report_timer));
 /*  
   while(slotframe_offset != 0) {
     PROCESS_WAIT_UNTIL(etimer_expired(&report_timer));
@@ -1203,16 +1277,32 @@ PROCESS_THREAD(sdn_report_process, ev, data)
   PROCESS_WAIT_UNTIL(etimer_expired(&report_timer));
   LOG_INFO("TSCH-SDN: first report delay 2\n");
   */
-  purge_sdn_nbr_table();
-      
+  
+  /* clean the nbr table */
+  //purge_sdn_nbr_table();
+  LOG_ERR("sdn report process: START REPORT SENDING \n");
   etimer_set(&report_timer, CLOCK_SECOND * SDN_REPORT_PERIOD);
   while(tsch_is_associated) {
-    PROCESS_WAIT_UNTIL(etimer_expired(&report_timer));
-    etimer_reset(&report_timer);
+    if(!ready_to_start_report) {  
+      while(!ready_to_start_report) {
+        etimer_set(&init_timer, CLOCK_SECOND / 100);
+        PROCESS_WAIT_UNTIL(etimer_expired(&init_timer));
+      }
+      etimer_set(&init_timer, random_rand() % TSCH_EB_PERIOD);
+      PROCESS_WAIT_UNTIL(etimer_expired(&init_timer));
+      
+      etimer_restart(&report_timer);
+       
+    } else {    
+      LOG_ERR("sdn report process: reset report timer \n");
+      PROCESS_WAIT_UNTIL(etimer_expired(&report_timer));
+      etimer_reset(&report_timer);
+    }
+    
     if(!tsch_is_associated) {
       LOG_ERR("sdn report process: TSCH is not associated \n");
     } else {
-  
+      //LOG_ERR("sdn report process:start report sending \n");
       /* find first offset to send report packet */ 
       /* 
       while(slotframe_offset != 0) {
@@ -1236,11 +1326,18 @@ PROCESS_THREAD(sdn_report_process, ev, data)
       int num_entry_to_ctrl = sdn_is_flowid_exist_in_table(&flow_id_to_controller);
       if(num_entry_to_ctrl > 7){num_entry_to_ctrl = 7;}
 #if SDN_SHARED_FROM_CTRL_FLOW || SDN_SHARED_CONTROL_PLANE
+      
       if(num_entry_to_ctrl > 0) {
         num_from_controller_rx_slots = 1;
         sdn_is_joined = 1;
       }
-#endif      
+      
+      if(!parent_is_set && sdn_is_joined) {
+        /* update time source as SDN parent */
+        tsch_queue_update_time_source(sdn_get_addr_for_flow_id(&flow_id_to_controller));
+        parent_is_set = 1;
+      }
+#endif       
       int num_entry_from_ctrl = num_from_controller_rx_slots;
       if(num_entry_from_ctrl > 7){num_entry_from_ctrl = 7;}
       
@@ -1288,11 +1385,14 @@ PROCESS_THREAD(sdn_report_process, ev, data)
         stat = nbr_table_next(sdn_nbrs, stat);
       }
       
+      //printf("report process: num nbr %d \n", sdn_nbr_num);
       if(sdn_nbr_num > SDN_MAX_NUM_REPORT_NBR) {
+        //printf("report process in loop1: \n");
         int find_valid_eb_rate = 0; 
         int tmp_num_nbr;
         valid_eb_rate = 0.05;
-        while(!find_valid_eb_rate || valid_eb_rate >= 1) {
+        while(!find_valid_eb_rate && valid_eb_rate < 1) {
+          //printf("report process in loop2: eb rate %f \n", valid_eb_rate);
           tmp_num_nbr = 0;
           valid_eb_rate = valid_eb_rate + 0.05;
           stat = nbr_table_head(sdn_nbrs);
@@ -1309,33 +1409,70 @@ PROCESS_THREAD(sdn_report_process, ev, data)
         }
       }
       
+      /* if it is first report, just send best NBRs*/
+      if(num_entry_to_ctrl == 0) {
+        valid_eb_rate = SDN_TRSHLD_BETS_NBRS;
+        //printf("first report set valid eb rate to SDN_TRSHLD_BETS_NBRS \n");
+      }
 
       /* fill report packet with neighbor info: EB, RSSI, addr */
+      //struct sdn_nbr *stat = NULL;  // <-----
       uint8_t nbr_num = 0;
-      linkaddr_t * addr = NULL;
-      if(SDN_LINK_METRIC == EB_NUM){
+      linkaddr_t *addr = NULL;
+      linkaddr_t *best_addr = NULL;
+      int best_eb_ratio = 0;
+      
+      if(SDN_LINK_METRIC == EB_NUM) {
         stat = nbr_table_head(sdn_nbrs);
-
+        
+        //printf("report process: final val eb rate %f \n", valid_eb_rate);
 	while(stat != NULL){
 	  if(((float)stat->rx_eb_count / exp_eb_num) > valid_eb_rate) {
-            addr = nbr_table_get_lladdr(sdn_nbrs, stat);
-	    nbr_num ++;
-	    /* put the addr of neighbor in report packet */
-	    uint8_t j;
-	    for (j = 0; j< LINKADDR_SIZE; ++j){
-	      report->payload[report_size] = addr->u8[j];
-	      report_size = report_size + 1;
+	    //printf("in loop 1 \n");
+	    if(num_entry_to_ctrl == 0) {
+	      //printf("in loop 2 \n");
+	      printf("report process: first report: r1:%f, E:%d, r2:%d \n", ((float)stat->rx_eb_count / exp_eb_num), stat->rx_eb_count, stat->ratio);
+              addr = nbr_table_get_lladdr(sdn_nbrs, stat);
+	      nbr_num ++;
+	      /* put the addr of neighbor in report packet */
+	      uint8_t j;
+	      for (j = 0; j< LINKADDR_SIZE; ++j) {
+	        report->payload[report_size] = addr->u8[j];
+	        report_size = report_size + 1;
+              }
+              report->payload[report_size] = (int)ceil((((float)stat->ratio / 100) * exp_eb_num));
+              report_size = report_size +1;
+              
+              if(stat->ratio > best_eb_ratio) {
+                best_addr = addr;
+                best_eb_ratio = stat->ratio;
+                printf("\n prepare report to send to %d \n", best_addr->u8[1]);
+                
+              }
+              
+            } else {
+              addr = nbr_table_get_lladdr(sdn_nbrs, stat);
+	      nbr_num ++;
+	      /* put the addr of neighbor in report packet */
+	      uint8_t j;
+	      for (j = 0; j< LINKADDR_SIZE; ++j){
+	        report->payload[report_size] = addr->u8[j];
+	        report_size = report_size + 1;
+              }
+              report->payload[report_size] = stat->rx_eb_count;
+              report_size = report_size +1;
+              
+              if(stat->rx_eb_count > best_eb_ratio) {
+                best_addr = addr;
+                best_eb_ratio = stat->rx_eb_count;
+              }
             }
-            report->payload[report_size] = stat->rx_eb_count;
-            report_size = report_size +1;
           }
           stat = nbr_table_next(sdn_nbrs, stat);
         }
       }
       report->payload[R_NBR_NUB_INDEX] = nbr_num;
 
-      /* purge the sdn neighbor table after each report sending */
-      purge_sdn_nbr_table();
 #if SINK
       //TODO need a send func UART to send sink report to controller
       update_node_nbr_list(report);
@@ -1359,15 +1496,21 @@ PROCESS_THREAD(sdn_report_process, ev, data)
       int fid_exsit;
       if((fid_exsit = sdn_is_flowid_exist_in_table(&flow_id_to_controller)) > 0){
         sdn_output(&linkaddr_null, &flow_id_to_controller, 1, NULL);
-      } else if(addr != NULL) {
-        sdn_output(addr, &flow_id_to_controller, 1, NULL);
+      } else if(best_addr != NULL) {
+        sdn_output(best_addr, &flow_id_to_controller, 1, NULL);
       } else{
         printf("\n fail to send report packet with size: %d\n", report_size+1);
       }
       
-      if(addr != NULL) {
-        printf("\n send report packet with size: %d\n", report_size+1);
+      if(best_addr != NULL) {
+        printf("\n send report packet with size: %d to %d \n", report_size+1, best_addr->u8[1]);
+      } else {
+        printf("\n fail to send report with size: :NULL addr %d\n", report_size+1);
       }
+      
+      
+      /* purge the sdn neighbor table after each report sending */
+      purge_sdn_nbr_table();
       
 #endif
       packet_deallocate(report);

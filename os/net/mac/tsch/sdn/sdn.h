@@ -19,6 +19,7 @@ extern int sdn_is_joined; // we do not allow a node to send EB befor joining to 
 extern int num_from_controller_rx_slots;
 extern int sdn__sf_offset_to_send_eb;
 extern int sdn__ts_offset_to_send_eb;
+extern int ready_to_start_report;
 extern uint16_t sdn_max_used_sf_offs;
 #if SINK
 extern int sdn_num_shared_cell;
