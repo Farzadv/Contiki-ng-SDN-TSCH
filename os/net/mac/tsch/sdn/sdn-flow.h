@@ -20,6 +20,8 @@ void sdn_flow_init(void);
 
 int sdn_add_flow_enrty(const linkaddr_t *flow_id, int sf_handle, int slot_num, int ch_off, int priority);
 
+int sdn_remove_flow_entry(const linkaddr_t *flow_id, int sf_handle, int slot_num, int ch_off, int priority);
+
 linkaddr_t *sdn_find_flow_id(const int timeslot, const int sf_handle);
 
 linkaddr_t *sdn_get_addr_for_flow_id(const linkaddr_t *flow_id);

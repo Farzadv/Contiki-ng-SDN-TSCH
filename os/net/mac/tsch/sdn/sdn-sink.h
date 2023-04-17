@@ -33,6 +33,7 @@ struct request_id{
   linkaddr_t req_sender;
   int is_ctrl;
   int req_num;
+  int num_reconf; // indicates the number of times we configure or reconfigure this flow
 };
 
 struct rsrc_spec_of_config{
@@ -71,6 +72,14 @@ struct flow_hops_cells{
   float pdr_link;
   float pdr_n_tx;
   int cell_num;
+};
+
+
+
+  
+struct conf_main_cell_list {
+  int cell_list[SDN_MAX_PACKET_LEN];
+  int len;
 };
 /*---------------------------------------------------------------------------*/
 void sdn_send_packet_to_controller(const uint8_t *buf, uint16_t len, const linkaddr_t *flow_id);

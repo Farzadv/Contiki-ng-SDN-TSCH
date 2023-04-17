@@ -20,7 +20,7 @@
 #define LOG_LEVEL SDN_FLOW_LOG_LEVEL
 
 
-int sdn_remove_flow_entry(struct flow_table_entry *e);
+int remove_flow_entry(struct flow_table_entry *e);
 
 
 linkaddr_t addr =  {{ 0x01, 0x00 }};
@@ -45,6 +45,29 @@ sdn_add_flow_enrty(const linkaddr_t *flow_id, int sf_handle, int slot_num, int c
 {
   struct flow_table_entry *e;
   for(e = list_head(sdn_flow_table); e != NULL; e = e->next){
+
+/*  
+#if SDN_RECONF_MODE
+    if(linkaddr_cmp(&e->flow_id, flow_id) && linkaddr_cmp(&e->flow_id, &flow_id_to_controller)) {
+      e->sf_handle = sf_handle;
+      e->slot_num = slot_num;
+      e->ch_off = ch_off;
+      e->priority = priority;
+      
+      //flush rest of data flows and prepare it to reconfig //TODO
+      struct flow_table_entry *ee;
+      for(ee = list_head(sdn_flow_table); ee != NULL; ee = ee->next) {
+        if(ee->flow_id.u8[0] > 8) {
+          printf("remove data flow-conf %d \n", ee->flow_id.u8[0]);
+          list_remove(sdn_flow_table, ee);
+          memb_free(&flow_table_mem, ee);
+        }      
+      }
+      return 1;
+    }
+#endif
+*/
+ 
     if (sf_handle == e->sf_handle && slot_num == e->slot_num && ch_off == e->ch_off && linkaddr_cmp(&e->flow_id, flow_id) && priority == e->priority){
       //LOG_INFO("SDN FLOW: flow exists in table \n");
       return 0;
@@ -57,12 +80,14 @@ sdn_add_flow_enrty(const linkaddr_t *flow_id, int sf_handle, int slot_num, int c
       LOG_INFO("SDN FLOW: flow exists but update priority \n");
       return 1;
     }
+    /*
     if(sf_handle == e->sf_handle && slot_num == e->slot_num && ch_off == e->ch_off && priority == e->priority){
       LOG_INFO("SDN FLOW: schedule exist for another fid -> flash the schedule \n");
-      sdn_remove_flow_entry(e);
+      remove_flow_entry(e);
       e = NULL;
       break;
     }
+    */
   }
 
   if (e == NULL){
@@ -85,12 +110,30 @@ sdn_add_flow_enrty(const linkaddr_t *flow_id, int sf_handle, int slot_num, int c
 }
 /*---------------------------------------------------------------------------*/
 int 
-sdn_remove_flow_entry(struct flow_table_entry *e)
+remove_flow_entry(struct flow_table_entry *e)
 {
   if(e != NULL){
     list_remove(sdn_flow_table, e);
     memb_free(&flow_table_mem, e);
     return 1;
+  }
+  return -1;
+}
+/*---------------------------------------------------------------------------*/
+/* this function removes a flow from the flow table */
+int 
+sdn_remove_flow_entry(const linkaddr_t *flow_id, int sf_handle, int slot_num, int ch_off, int priority)
+{
+  struct flow_table_entry *e;
+  for(e = list_head(sdn_flow_table); e != NULL; e = e->next){
+    if(sf_handle == e->sf_handle && slot_num == e->slot_num && ch_off == e->ch_off && linkaddr_cmp(&e->flow_id, flow_id) && priority == e->priority){
+      remove_flow_entry(e);
+      LOG_INFO("SDN FLOW: remove flow, sfid %u, slot num %u, ch-off %u, priority %u, flowid ",
+             e->sf_handle, e->slot_num, e->ch_off, e->priority);
+      LOG_INFO_LLADDR(&e->flow_id);
+      LOG_INFO_("\n");
+      return 0;
+    }
   }
   return -1;
 }

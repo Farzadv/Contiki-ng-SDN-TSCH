@@ -21,14 +21,14 @@
 #define LOG_LEVEL SDN_SINK_LOG_LEVEL
 
 
-static float POS_ARRAY[50][2] = {{0.0, 0.0}, {1.67, 1.42}, {-15.92, 20.44}, {-21.18, -19.28}, {22.13, 11.94}, {-5.31, -18.47}, {-0.25, -26.5}, {-32.22, 6.12}, {-41.34, 31.15}, {-40.2, -41.07}, {30.02, 42.24}, {36.12, -12.6}, {25.84, -20.18}, {2.89, -46.61}, {18.63, -44.15}, {-57.96, 4.43}, {-56.03, 11.21}, {-62.53, 35.2}, {-56.62, 49.12}, {-68.46, -34.24}, {-51.59, -32.78}, {-55.72, -34.3}, {-35.92, -72.06}, {-36.12, -63.52}, {-15.67, -55.95}, {39.33, 39.48}, {56.31, 41.25}, {57.13, 27.69}, {27.65, 70.47}, {25.42, 67.0}, {43.48, -25.69}, {32.84, -25.5}, {36.6, -54.59}, {-82.59, -5.73}, {-86.93, -1.13}, {-50.76, 61.69}, {-77.81, -36.23}, {62.54, 34.16}, {68.93, 55.53}, {71.43, 50.32}, {84.93, 15.51}, {10.9, 67.61}, {47.1, 74.29}, {-2.84, 63.82}, {72.98, -25.25}, {24.54, -76.51}, {30.23, -77.93}, {79.59, 1.18}, {-9.33, 63.43}, {-7.02, 54.83}};
+static float POS_ARRAY[10][2] = {{0.0, 0.0}, {-2.88, 11.6}, {9.28, 4.26}, {1.35, -0.48}, {-8.39, 0.17}, {16.17, 2.45}, {4.04, -5.93}, {-11.65, 6.66}, {-8.38, -5.82}, {8.13, -3.29}};
 
 static linkaddr_t last_flow_id = {{ 0x08, 0x00 }};
 static float coef = 0.5;
 #if SDN_UNCONTROLLED_EB_SENDING
 #define ADMIT_FLOW_PDR        0.5    // in the joining process the selected parent must have EB pdr above ADMIT_FLOW_PDR
 #elif SDN_MDPI_TEST
-#define ADMIT_FLOW_PDR        0.4
+#define ADMIT_FLOW_PDR        0.84
 #else
 #define ADMIT_FLOW_PDR   SDN_TRSHLD_BETS_NBRS   // graph p = 0.9 : what 0.84? consider one EB lower than expected -> exp =20, 0.84 = (.9*20 - 1)/20
 #endif
@@ -84,12 +84,29 @@ int get_first_free_shared_timeslot(void);
 
 int calculate_num_shared_cell(void);
 
-void trigger_from_controller_config_immediately(const linkaddr_t *sender_addr);
+void trigger_from_controller_config_immediately(const linkaddr_t *sender_addr, int reconf_num); //TODO I have to remove the second argu and 
+ // make it autonomus
+
+int update_parent_node(struct sdn_packet* p);
+
+int reconfigure_network(struct sdn_packet* p, struct request_id *req_id);
+
+int get_cell_list_for_hop(const linkaddr_t *addr1, const linkaddr_t *addr2, struct sdn_packet_info *config);
+
+void insert_old_schedule_in_config(struct sdn_packet_info *new_conf, struct request_id *req_id, struct rsrc_spec_of_config *req_spec);
+
+int label_cell_to_be_used_for_reconfigure(const linkaddr_t *node_addr, const linkaddr_t *flow_id, int slot_offset, int ch_offset);
+
+void free_old_cells(struct sdn_packet_info *config, const linkaddr_t *addr1, const linkaddr_t *addr2, const linkaddr_t *flow_id);
+
+linkaddr_t * get_common_parent(struct sdn_packet_info *config, const linkaddr_t *node);
 
 /*---------------------------------------------------------------------------*/
 /* list of shared cells */
 struct list_of_shared_cell shared_cell;
 
+/* tmp list for uinstallation cells */
+struct conf_main_cell_list conf_main_list;
 /*---------------------------------------------------------------------------*/
 PROCESS(conf_handle_process, "conf handle process");
 //AUTOSTART_PROCESSES(&conf_handle_process);
@@ -118,7 +135,7 @@ LIST(global_nbr_list);
 MEMB(global_nbr_list_mem, struct nbrs_info, NODE_NUM_IN_NETWORK);
 /*---------------------------------------------------------------------------*/
 #define NODE_SLOT_LIST_SIZE       SDN_DATA_SLOTFRAME_SIZE
-#define NODE_CHAN_LIST_SIZE       2  // each node only can have one link per ts
+#define NODE_CHAN_LIST_SIZE       2+2  // each node only can have one link per ts; 1 = we define to specify this ts is in reconfiguretion process
 struct sdn_global_table_entry {
   struct sdn_global_table_entry *next;
   linkaddr_t node_addr;
@@ -185,6 +202,53 @@ specify_parent_from_report(struct sdn_packet* p)
         register_node_to_global_nbr_table(&sender_addr);
         //print_global_table(); //must be removed
         return 1;
+      }
+    }
+  }
+  return -1;
+}
+/*---------------------------------------------------------------------------*/
+/* update the parent node */
+int
+update_parent_node(struct sdn_packet* p)
+{
+  //TODO maybe it is better to look at the total history of link estimation to change the parent not just the current report
+  if(p->payload[R_METRIC_TYP_INDEX] == EB_NUM && p->payload[R_NBR_NUB_INDEX] > 0) {
+    int i;
+    int j;
+    int counter = R_NBR_NUB_INDEX + 1;
+    int nbr_eb_number = 0;
+    linkaddr_t addr;
+    linkaddr_t parent_addr;
+    linkaddr_t sender_addr;
+    
+    for(j = 0; j< LINKADDR_SIZE; ++j) {
+      sender_addr.u8[j] = p->payload[R_SENDER_ADDR_INDEX + j];
+    }
+  
+    for(i=0; i<p->payload[R_NBR_NUB_INDEX]; i++) {
+      for(j = 0; j< LINKADDR_SIZE; ++j) {
+        addr.u8[j] = p->payload[counter];
+        counter++;
+      }
+      if(p->payload[counter] > nbr_eb_number) {
+        nbr_eb_number = p->payload[counter];
+        linkaddr_copy(&parent_addr, &addr);
+        //LOG_INFO("CONTROLLER: specify parent 1 \n");
+      }
+      counter++;
+    }
+    
+    if(!linkaddr_cmp(&parent_addr, &linkaddr_null)) {
+      struct sdn_global_table_entry *e;
+      for(e = list_head(sdn_global_table); e != NULL; e = e->next) { 
+        if(linkaddr_cmp(&e->node_addr, &sender_addr)) {
+          linkaddr_copy(&e->parent_addr, &parent_addr);
+          LOG_INFO("CONTROLLER: update parent addr ");
+          LOG_INFO_LLADDR(&parent_addr);
+          LOG_INFO_("\n");
+          return 1;
+        }
       }
     }
   }
@@ -453,6 +517,43 @@ add_slot_to_taken_cell_list(const linkaddr_t *node_addr, int is_ctrl_cell, int s
         //LOG_INFO("CONTROLLER: add slot %d with ch %d to node \n", e->data_taken_slot[0][slot_offset], e->data_taken_slot[1][slot_offset]);
         //LOG_INFO_LLADDR(&e->node_addr);
         //LOG_INFO("\n");
+        return 1;
+      } 
+    }
+  }
+  return -1;
+}
+/*---------------------------------------------------------------------------*/
+int
+label_cell_to_be_used_for_reconfigure(const linkaddr_t *node_addr, const linkaddr_t *flow_id, int slot_offset, int ch_offset)
+{
+  struct sdn_global_table_entry *e;
+  for(e = list_head(sdn_global_table); e != NULL; e = e->next) { 
+    if(linkaddr_cmp(&e->node_addr, node_addr)) {
+  /*    if(is_ctrl_cell == 1) {
+        for(i=0; i<NODE_SLOT_LIST_SIZE; i++) {
+          if(e->ctrl_taken_slot[i] == -1) {
+            e->ctrl_taken_slot[i] = slot_offset;
+            LOG_INFO("CONTROLLER: add slot %d to node \n", e->ctrl_taken_slot[i]);
+            LOG_INFO_LLADDR(&e->node_addr);
+            LOG_INFO("\n");
+            break;
+          } 
+          if(e->ctrl_taken_slot[i] != -1 && i == NODE_SLOT_LIST_SIZE-1) {
+            LOG_INFO("CONTROLLER: NODE_SLOT_LIST_SIZE exceeds, no free space to allocate! \n");
+          }
+        }
+      } 
+*/     
+     if(slot_offset >= NODE_SLOT_LIST_SIZE) {
+        LOG_ERR("CONTROLLER: NODE_SLOT_LIST_SIZE exceeds, no free space to allocate! \n");
+        return -1;
+     }
+     if(e->data_taken_slot[0][slot_offset] != -1 && flow_id != NULL) {
+        e->data_taken_slot[2][slot_offset] = flow_id->u8[0];
+        LOG_INFO("CONTROLLER: labe slot %d with ch %d, flow-id \n", e->data_taken_slot[0][slot_offset], e->data_taken_slot[1][slot_offset]);
+        LOG_INFO_LLADDR(flow_id);
+        LOG_INFO("\n");
         return 1;
       } 
     }
@@ -1403,7 +1504,8 @@ add_schedule_to_config(struct sdn_packet *config, struct rsrc_spec_of_config *re
           
           if(slot_busy == 0) {    
             int m;
-            for(m = 0; m < repetition_num; m++) {               
+            for(m = 0; m < repetition_num; m++) {     
+              // TODO [mustdo] we should consider this ts is freed recently and can be allocated to a flow its owner: can be used by another flow but not another node in the network. so if KEY is 1 it means ts is freed and not used by another flow of node if 2 means freed but used by nother flow of the node ::: the ts should be busy for both of nodes          
               if(e1->data_taken_slot[0][(last_ts + (m*req_spec->app_qos.traffic_period))] > -1 ||
                  e2->data_taken_slot[0][(last_ts + (m*req_spec->app_qos.traffic_period))] > -1) {
                 slot_busy = 1;
@@ -1526,9 +1628,9 @@ look_for_req_id_in_sent_config_list(struct request_id *req_id)
   if(req_id != NULL) {
     for(e = list_head(sent_config_list); e != NULL; e = e->next) { 
       if(linkaddr_cmp(&e->req_id.req_sender, &req_id->req_sender) &&
-       e->req_id.is_ctrl == req_id->is_ctrl && e->req_id.req_num == req_id->req_num) {
-        LOG_INFO("CONTROLLER: dup request_id! -> addr:is_ctrl:req_num = %d%d:%d:%d \n",req_id->req_sender.u8[0], req_id->req_sender.u8[1],
-               req_id->is_ctrl, req_id->req_num);
+       e->req_id.is_ctrl == req_id->is_ctrl && e->req_id.req_num == req_id->req_num && e->req_id.num_reconf == req_id->num_reconf) {
+        LOG_INFO("CONTROLLER: dup request_id! -> addr:is_ctrl:req_num:reconf = %d%d:%d:%d:%d \n",req_id->req_sender.u8[0], req_id->req_sender.u8[1],
+               req_id->is_ctrl, req_id->req_num, req_id->num_reconf);
         return e;
       }
     }
@@ -1572,7 +1674,7 @@ exist_active_timer_for_config(struct request_id *req_id)
   if(req_id != NULL) {
     for(e = list_head(sent_config_list); e != NULL; e = e->next) { 
       if(linkaddr_cmp(&e->req_id.req_sender, &req_id->req_sender) &&
-       e->req_id.is_ctrl == req_id->is_ctrl && e->req_id.req_num == req_id->req_num) {
+       e->req_id.is_ctrl == req_id->is_ctrl && e->req_id.req_num == req_id->req_num && e->req_id.num_reconf == req_id->num_reconf) {
         /* check there is a active timer */
         for(t = list_head(timer_list); t != NULL; t = t->next) { 
           if(linkaddr_cmp(&t->ack_sender, &e->ack_sender) && t->seq_num == e->seq_num) {
@@ -1853,11 +1955,15 @@ get_request_id(struct sdn_packet* p)
     
     req_id->is_ctrl = 1;
     linkaddr_copy(&req_id->req_sender, &sender_addr);
+    if(req_id->req_num > 1) {
+      req_id->num_reconf = 1;
+    }
   }
   
   
   if((p->typ & 0x0f) == REQUEST) {
     req_id->is_ctrl = 0;
+    req_id->num_reconf = 1; //TODO here we should check this req is for the first time of duplicate?!if first time set it to 1 else increment
     req_id->req_num = p->payload[REQ_NUM_OF_REQ];
     linkaddr_copy(&req_id->req_sender, &sender_addr);
   }
@@ -1868,7 +1974,7 @@ get_request_id(struct sdn_packet* p)
 /* when receiving the ack of to-controller config, trigger from-controller 
    config to install */
 void
-trigger_from_controller_config_immediately(const linkaddr_t *sender_addr)
+trigger_from_controller_config_immediately(const linkaddr_t *sender_addr, int reconf_num)
 {
   struct request_id *req_id = (struct request_id *) malloc(sizeof(struct request_id));
   struct rsrc_spec_of_config *req_spec = (struct rsrc_spec_of_config *) malloc(sizeof(struct rsrc_spec_of_config));
@@ -1885,7 +1991,9 @@ trigger_from_controller_config_immediately(const linkaddr_t *sender_addr)
   req_id->req_num = flow_id_from_controller.u8[0];
   req_id->is_ctrl = 1;
   linkaddr_copy(&req_id->req_sender, sender_addr);
-  
+#if SDN_RECONF_MODE
+  req_id->num_reconf = reconf_num; //TODO should be updated by regarding previous config
+#endif 
   /* specify req-spec */
   linkaddr_copy(&req_spec->flow_id, &flow_id_from_controller);
   linkaddr_copy(&req_spec->dest_addr, sender_addr);
@@ -1909,11 +2017,14 @@ trigger_from_controller_config_immediately(const linkaddr_t *sender_addr)
   }
   
   if(created_conf != NULL) {
+    
+    insert_old_schedule_in_config(created_conf, req_id, req_spec);
+    
     int i;
     LOG_INFO("created conf-best len %u\n", created_conf->len);
     for (i=0; i<created_conf->len -1; i++) {
       LOG_INFO("created config-best %u\n", created_conf->packet.payload[i]);
-    }
+    } 
     sdn_handle_config_packet(&created_conf->packet, created_conf->len, &linkaddr_null);
   }
   
@@ -2154,14 +2265,24 @@ sdn_send_packet_to_controller(const uint8_t *buf, uint16_t len, const linkaddr_t
 #if !SDN_SHARED_CONTROL_PLANE
           /* if configuring to-controller flow-id triger the from-controller now: */
           if(req_id->is_ctrl == 1 && req_id->req_num == flow_id_to_controller.u8[0]) {
-            trigger_from_controller_config_immediately(&req_id->req_sender);
+            trigger_from_controller_config_immediately(&req_id->req_sender, 1);
           }
 #endif          
           //print_global_table();
+          
         } 
          
       } else{
         update_node_nbr_list(p);
+        /*
+          need_to_change_parent();
+          update reconf num from already sent config
+        
+        */
+        if(req_id->req_sender.u8[1] == 4 && p->payload[R_REPORT_SEQ_NUM_INDEX] == 8) {
+          reconfigure_network(p, req_id);
+        }
+        
       }
       if(req_id != NULL) { 
         free(req_id); 
@@ -2179,6 +2300,536 @@ sdn_send_packet_to_controller(const uint8_t *buf, uint16_t len, const linkaddr_t
   }
  packet_deallocate(p);
  }
+}
+/*---------------------------------------------------------------------------*/
+/* find common ancestor for a node on old and new paths */
+linkaddr_t * 
+get_common_parent(struct sdn_packet_info *config, const linkaddr_t *node)
+{
+  if(config == NULL || node == NULL) {
+    return NULL;
+  }
+  
+  linkaddr_t *addr_ca = (linkaddr_t *) malloc(sizeof(linkaddr_t));
+  int i,j,k;
+  static linkaddr_t tmp_addr;
+  static linkaddr_t tmp_ca;
+  int counter = CONF_LIST_OF_NODE_IN_PATH_INDEX;
+  
+  linkaddr_copy(addr_ca, get_parent_from_node_addr(node));
+
+  for(k=0; k<50; k++) {
+    for(i=0; i<config->packet.payload[CONF_NUM_SOURCE_ROUTING_NODE_INDEX]; i++) {
+    
+      for(j = 0; j< LINKADDR_SIZE; ++j) {
+        tmp_addr.u8[j] = config->packet.payload[counter];
+        counter++;
+      }
+      if(linkaddr_cmp(&tmp_addr, addr_ca)) {
+        LOG_INFO("CONTROLLER: find CA node %d%d\n",addr_ca->u8[0], addr_ca->u8[1]);
+        return addr_ca;
+      }
+    }
+    
+    linkaddr_copy(&tmp_ca, addr_ca);
+    linkaddr_copy(addr_ca, get_parent_from_node_addr(&tmp_ca));
+  }
+  
+  return NULL;
+}
+/*---------------------------------------------------------------------------*/
+int 
+reconfigure_network(struct sdn_packet* p, struct request_id *req_id)
+{  
+  struct sdn_packet_info *new_conf = NULL;
+  int i;
+  //linkaddr_t addr_ca; //common ancestor (ca)
+  linkaddr_t *addr_ca = NULL;
+  struct sent_config_info *e;
+  
+  
+  /* update parent */
+  update_parent_node(p);
+ 
+  
+  /* update req_id and req_spec */
+  req_id->num_reconf = 2;                        //TODO should be updated based on the previous snet config packet automatically
+  req_id->req_num = flow_id_to_controller.u8[0];
+  
+  struct rsrc_spec_of_config *req_spec = (struct rsrc_spec_of_config *) malloc(sizeof(struct rsrc_spec_of_config));
+  
+  linkaddr_copy(&req_spec->src_addr, &req_id->req_sender);
+  linkaddr_copy(&req_spec->dest_addr, get_parent_from_node_addr(&req_id->req_sender));
+  linkaddr_copy(&req_spec->flow_id, &flow_id_to_controller);
+  LOG_INFO("CONTROLLER: reconf report addr:id %d:%d\n",req_id->req_sender.u8[1], req_id->req_num);
+  req_spec->app_qos.traffic_period = SDN_SF_REP_PERIOD;
+  req_spec->sf_id = 0;
+  req_spec->num_ts = 1;
+  req_spec->ch_off = 0;
+  
+  
+  /************************/
+  /* find common ancestor */
+  for(e = list_head(sent_config_list); e != NULL; e = e->next) { 
+    if(linkaddr_cmp(&e->req_id.req_sender, &req_id->req_sender) && e->req_id.is_ctrl == req_id->is_ctrl && (e->req_id.num_reconf + 1) == req_id->num_reconf && e->req_id.req_num == req_id->req_num) {
+      break;
+    }
+  }
+  
+  if(e != NULL) {
+    addr_ca = get_common_parent(&e->packet_info, &req_id->req_sender);
+  }
+  if(addr_ca != NULL) {
+    free_old_cells(&e->packet_info, addr_ca, &req_id->req_sender, &req_spec->flow_id);
+  } else {
+    LOG_ERR("no common ancestor found \n");
+  }
+  /* ******************* */
+    
+  // send to-cntl reconf
+  if(req_spec != NULL && !linkaddr_cmp(&req_spec->dest_addr, &linkaddr_null)) {
+    new_conf = request_confing_packet(req_id, req_spec);
+  }
+  if(new_conf != NULL) {
+  
+    insert_old_schedule_in_config(new_conf, req_id, req_spec);
+    
+    LOG_INFO("created conf-best len %u\n", new_conf->len);
+    for (i=0; i<new_conf->len -1; i++) {
+      LOG_INFO("created config-best %u\n", new_conf->packet.payload[i]);
+    }
+    sdn_handle_config_packet(&new_conf->packet, new_conf->len, &linkaddr_null);
+  
+#if !SDN_SHARED_CONTROL_PLANE
+    // if configuring to-controller flow-id triger the from-controller now: 
+    if(req_id->is_ctrl == 1 && req_id->req_num == flow_id_to_controller.u8[0]) {
+      trigger_from_controller_config_immediately(&req_id->req_sender, 2);
+    }
+#endif 
+         
+  }   
+    
+  //TODO redirect all of the flows sub-tree
+  // redirect the data flow:
+  int find_sent_data_flow = 0;
+  for(e = list_head(sent_config_list); e != NULL; e = e->next) { 
+    if(linkaddr_cmp(&e->req_id.req_sender, &req_id->req_sender) && e->req_id.is_ctrl == 0) {
+      find_sent_data_flow = 1;
+      req_id->is_ctrl = 0;
+      req_id->req_num = e->req_id.req_num;
+      break;
+    }
+  }
+
+  if(e != NULL && find_sent_data_flow) {  
+    req_id->num_reconf = 2;
+    
+    req_spec->sf_id = 0;
+    req_spec->num_ts = 1;
+    req_spec->ch_off = 0;
+    linkaddr_copy(&req_spec->flow_id, &last_flow_id); // TODO should find last flow-id of each request
+    linkaddr_copy(&req_spec->src_addr, &req_id->req_sender);
+    int j;
+    for(j = 0; j< LINKADDR_SIZE; ++j) {
+      req_spec->dest_addr.u8[j] = j;
+    }
+    req_spec->app_qos.traffic_period = 502;
+    req_spec->app_qos.reliability = 99;
+    
+    if(req_spec != NULL) {
+      
+      if(addr_ca != NULL) {
+          free_old_cells(&e->packet_info, addr_ca, &req_id->req_sender, &req_spec->flow_id);
+        } else {
+          LOG_ERR("no common ancestor found \n");
+      }
+      
+      new_conf = request_confing_packet(req_id, req_spec);
+      
+      if(new_conf != NULL) {
+      
+        insert_old_schedule_in_config(new_conf, req_id, req_spec);
+        
+        LOG_INFO("created reconf-req len %u\n", new_conf->len);
+        for (i=0; i<new_conf->len -1; i++) {
+          LOG_INFO("created reconfig-req %u\n", new_conf->packet.payload[i]);
+        }
+        //sdn_handle_config_packet(&new_conf->packet, new_conf->len, &linkaddr_null);
+      }
+    }      
+  }
+  
+  /* free memory */
+  if(req_spec != NULL) {
+    free(req_spec);
+  }
+  
+  
+  // TODO release mem for CA
+  /* free memory */
+  if(addr_ca != NULL) {
+    free(addr_ca);
+  }
+  
+  
+  return 1;
+}
+/*---------------------------------------------------------------------------*/
+/* free list of cells that already configured: we want to use them again in reconfiguration 
+   for the same flow-id:
+   - this func support to free list of the all of the hops between addr1 and addr2 
+   - it does not support selective deletion of hops between a addr1 and addr2
+*/
+void
+free_old_cells(struct sdn_packet_info *config, const linkaddr_t *addr1, const linkaddr_t *addr2, const linkaddr_t *flow_id)
+{
+  linkaddr_t my_addr1;
+  linkaddr_t my_addr2;
+  int i, j;
+  int my_addr1_index = 0;
+  
+  int counter = CONF_LIST_OF_NODE_IN_PATH_INDEX;
+  int hop_list_index = (config->packet.payload[CONF_NUM_SOURCE_ROUTING_NODE_INDEX] * LINKADDR_SIZE) + CONF_LIST_OF_NODE_IN_PATH_INDEX - 1; // 1: since index has initial value starting from 1
+    
+  int schedule_index = hop_list_index + config->packet.payload[CONF_NUM_SOURCE_ROUTING_NODE_INDEX] + 2 + 1; // 2 = fid len
+      
+
+  /* specify install cell index */
+  int x;
+  int sum_lapsed_cell_uninstall = 0;
+  for(x=1; x < config->packet.payload[CONF_NUM_SOURCE_ROUTING_NODE_INDEX]; x++) {
+    sum_lapsed_cell_uninstall = ((config->packet.payload[hop_list_index + x] & 0xf0) >> 4) + sum_lapsed_cell_uninstall;
+  }
+  int install_cell_index = schedule_index + (sum_lapsed_cell_uninstall * CONFIG_CELL_SIZE);
+  int num_lapsed_install_cell = 0;
+
+
+  int find_starting_point = 0;
+  // init add2
+  for(j = 0; j< LINKADDR_SIZE; ++j) {
+    my_addr2.u8[j] = config->packet.payload[counter];
+    counter++;
+  }
+    
+  // loop over hops on old config
+  for(i=0; i<config->packet.payload[CONF_NUM_SOURCE_ROUTING_NODE_INDEX] - 1; i++) {
+    
+    /* check reach to the end of list of searhing */
+    if(linkaddr_cmp(&my_addr2, addr2)) {
+      break;
+    }
+    
+    /* copy my_addr2 to my_addr1 */
+    linkaddr_copy(&my_addr1, &my_addr2);
+    my_addr1_index++;
+    
+    /* find start of searching list */
+    if(linkaddr_cmp(&my_addr1, addr1)) {
+      find_starting_point = 1;
+    }
+      
+    /* fill my_addr2 */
+    for(j = 0; j< LINKADDR_SIZE; ++j) {
+      my_addr2.u8[j] = config->packet.payload[counter];
+      counter++;
+    }
+    
+    if(!find_starting_point) {
+      num_lapsed_install_cell = (config->packet.payload[hop_list_index + my_addr1_index] & 0xf) + num_lapsed_install_cell;
+      schedule_index = install_cell_index + (num_lapsed_install_cell * CONFIG_CELL_SIZE);
+    }
+     
+    if(find_starting_point) {
+      /* loop over num install cells */
+      int k;
+      int ts;
+      int ch;
+      
+      for(k = 0; k < (config->packet.payload[hop_list_index + my_addr1_index] & 0xf); k++) { 
+        ts = config->packet.payload[schedule_index + 1];
+        ts = (ts << 8) + config->packet.payload[schedule_index];
+        schedule_index++;
+        schedule_index++;
+        ch = config->packet.payload[schedule_index];
+        schedule_index++;
+        label_cell_to_be_used_for_reconfigure(&my_addr1, flow_id, ts, ch);
+        label_cell_to_be_used_for_reconfigure(&my_addr2, flow_id, ts, ch);
+      } 
+    } 
+  }
+}
+/*---------------------------------------------------------------------------*/
+void
+insert_old_schedule_in_config(struct sdn_packet_info *new_conf, struct request_id *req_id, struct rsrc_spec_of_config *req_spec)
+{
+  if(new_conf == NULL || req_id == NULL || req_spec == NULL) {
+    printf("fail to insert old schedule !!! \n");
+    return;
+  }
+  
+  int i;
+  int j;
+  
+  //init cell lists
+  for(i=0; i<SDN_MAX_PACKET_LEN; i++) {
+    conf_main_list.cell_list[i] = -1;
+  }
+  conf_main_list.len = SDN_MAX_PACKET_LEN;
+  
+  /* find common ancestor for new and old paths */
+  struct sent_config_info *e;
+  for(e = list_head(sent_config_list); e != NULL; e = e->next) { 
+    if(linkaddr_cmp(&e->req_id.req_sender, &req_id->req_sender) && e->req_id.is_ctrl == req_id->is_ctrl && (e->req_id.num_reconf + 1) == req_id->num_reconf && e->req_id.req_num == req_id->req_num) {
+      break;
+    }
+  }
+  
+  if(e != NULL) {
+    printf("reconf test 1\n");
+    int counter = CONF_LIST_OF_NODE_IN_PATH_INDEX;
+    linkaddr_t addr_old_conf;
+    linkaddr_t addr_new_conf;
+    linkaddr_t addr_ca; //common ancestor (ca)
+    int ca_index_in_sr_list = 0;
+    linkaddr_copy(&addr_ca, &linkaddr_null);
+    
+    /* find CA node */
+    for(i=0; i<new_conf->packet.payload[CONF_NUM_SOURCE_ROUTING_NODE_INDEX]; i++) {
+      for(j = 0; j< LINKADDR_SIZE; ++j) {
+        addr_new_conf.u8[j] = new_conf->packet.payload[counter];
+        addr_old_conf.u8[j] = e->packet_info.packet.payload[counter];
+        counter++;
+      }
+      
+      if(linkaddr_cmp(&addr_old_conf, &addr_new_conf)) {
+        linkaddr_copy(&addr_ca, &addr_old_conf);
+        ca_index_in_sr_list = i + 1;
+      } else {
+        printf("find common ancestor: node %d%d \n", addr_ca.u8[0], addr_ca.u8[1]);
+        break;
+      }
+    }
+    
+    /* insert uninstall cells */
+    counter = CONF_LIST_OF_NODE_IN_PATH_INDEX;
+    linkaddr_t addr1;
+    linkaddr_t addr2;
+    int addr1_index = 0;
+    int hop_list_index_new = (new_conf->packet.payload[CONF_NUM_SOURCE_ROUTING_NODE_INDEX] * LINKADDR_SIZE) + CONF_LIST_OF_NODE_IN_PATH_INDEX - 1; // 1: since index has initial value starting from 1
+    
+    //int hop_list_index_old = (e->packet_info.packet.payload[CONF_NUM_SOURCE_ROUTING_NODE_INDEX] * LINKADDR_SIZE) + CONF_LIST_OF_NODE_IN_PATH_INDEX - 1; // 1: since index has initial value starting from 1
+    
+    int schedule_index_new = hop_list_index_new + new_conf->packet.payload[CONF_NUM_SOURCE_ROUTING_NODE_INDEX] + 2 + 1; // 2 = fid len
+      
+    //int schedule_index_old = hop_list_index_old + e->packet_info.packet.payload[CONF_NUM_SOURCE_ROUTING_NODE_INDEX] + 2 + 1; // 2 = fid len
+      
+    
+    // init add2
+    for(j = 0; j< LINKADDR_SIZE; ++j) {
+      addr2.u8[j] = new_conf->packet.payload[counter];
+      counter++;
+    }
+    
+    // loop over hops on new config
+    for(i=0; i<new_conf->packet.payload[CONF_NUM_SOURCE_ROUTING_NODE_INDEX] - 1; i++) {
+      linkaddr_copy(&addr1, &addr2);
+      addr1_index++;
+      
+      for(j = 0; j < LINKADDR_SIZE; ++j) {
+        addr2.u8[j] = new_conf->packet.payload[counter];
+        counter++;
+      }
+      
+      /* node is up */
+      int num_uinstall_cell = 0;
+      if(addr1_index < ca_index_in_sr_list && ((new_conf->packet.payload[hop_list_index_new + addr1_index]) & 0xf) > 0) {
+        if((num_uinstall_cell = get_cell_list_for_hop(&addr1, &addr2, &e->packet_info)) > 0) {
+          new_conf->packet.payload[hop_list_index_new + addr1_index] = new_conf->packet.payload[hop_list_index_new + addr1_index] + ((num_uinstall_cell << 4) & 0xff);
+        } 
+      }
+      
+      /* node1 is ca and node2 is down */
+      else if(linkaddr_cmp(&addr1, &addr_ca) && !linkaddr_cmp(&addr2, &req_id->req_sender)) {
+        if((num_uinstall_cell = get_cell_list_for_hop(&addr1, NULL, &e->packet_info)) > 0) {
+          new_conf->packet.payload[hop_list_index_new + addr1_index] = new_conf->packet.payload[hop_list_index_new + addr1_index] + ((num_uinstall_cell << 4) & 0xff);
+        }
+      }
+      
+      else if(linkaddr_cmp(&addr1, &addr_ca) && linkaddr_cmp(&addr2, &req_id->req_sender)) {
+        int sum_of_hop = 0;
+        if((num_uinstall_cell = get_cell_list_for_hop(&addr1, NULL, &e->packet_info)) > 0) {
+          sum_of_hop = num_uinstall_cell;
+        }
+        
+        if((num_uinstall_cell = get_cell_list_for_hop(NULL, &addr2, &e->packet_info)) > 0) {
+          sum_of_hop = sum_of_hop + num_uinstall_cell;
+          new_conf->packet.payload[hop_list_index_new + addr1_index] = new_conf->packet.payload[hop_list_index_new + addr1_index] + ((sum_of_hop << 4) & 0xff);
+        }
+      }      
+      
+      else if(!linkaddr_cmp(&addr1, &addr_ca) && linkaddr_cmp(&addr2, &req_id->req_sender)) {
+        if((num_uinstall_cell = get_cell_list_for_hop(NULL, &addr2, &e->packet_info)) > 0) {
+          new_conf->packet.payload[hop_list_index_new + addr1_index] = new_conf->packet.payload[hop_list_index_new + addr1_index] + ((num_uinstall_cell << 4) & 0xff);
+        }
+        printf("reconf test 2: num cell unistall %d\n", num_uinstall_cell);
+      }
+      
+      else if(linkaddr_cmp(&addr1, &req_id->req_sender)) {
+        if((num_uinstall_cell = get_cell_list_for_hop(&addr1, NULL, &e->packet_info)) > 0) {
+          new_conf->packet.payload[hop_list_index_new + addr1_index] = new_conf->packet.payload[hop_list_index_new + addr1_index] + ((num_uinstall_cell << 4) & 0xff);
+        }
+      }      
+    }
+    
+    //insert uinstall cells in the config packet:
+    int num_cell_to_add = 0;
+    for(i=0; i<conf_main_list.len; i++) {
+      //printf(" list val %d \n", conf_main_list.cell_list[i]);
+      if(conf_main_list.cell_list[i] == -1) {
+        num_cell_to_add = i;
+        break;
+      }
+    }
+    if(num_cell_to_add + new_conf->len < SDN_MAX_PACKET_LEN) {
+      // shift install cells
+      for(i=0; i < new_conf->len - 1 - schedule_index_new; i++) {
+        new_conf->packet.payload[new_conf->len - 1 + num_cell_to_add - i - 1] = new_conf->packet.payload[new_conf->len - 1 - i - 1];
+      }
+      // add new uinstall cells
+      for(i=0; i < num_cell_to_add; i++) {
+        new_conf->packet.payload[schedule_index_new + i] = conf_main_list.cell_list[i];
+      }
+      new_conf->len = new_conf->len + num_cell_to_add;
+      printf("reconf test 3: update len %d, num element to add %d\n", new_conf->len, num_cell_to_add);
+      
+    } else {
+      printf("exceed max packet len: cannot include uinstall cells \n");
+    }
+  }
+}
+/*---------------------------------------------------------------------------*/
+/* get list of cells corresponding a hop in the already sent config */
+int
+get_cell_list_for_hop(const linkaddr_t *addr1, const linkaddr_t *addr2, struct sdn_packet_info *config)
+{
+
+  if(config == NULL || (addr1 == NULL && addr2 == NULL)) {
+    printf("fail to insert old schedule: NULL addr1 addr2 !!! \n");
+    return -1;
+  }
+  
+  
+  linkaddr_t my_addr1;
+  linkaddr_t my_addr2;
+  int my_addr1_index = 0;
+  int i, j;
+  
+  int counter = CONF_LIST_OF_NODE_IN_PATH_INDEX;
+  
+  int hop_list_index = (config->packet.payload[CONF_NUM_SOURCE_ROUTING_NODE_INDEX] * LINKADDR_SIZE) + CONF_LIST_OF_NODE_IN_PATH_INDEX - 1; // 1: since index (my_addr1_index) has initial value starting from 1
+
+  int schedule_index = hop_list_index + config->packet.payload[CONF_NUM_SOURCE_ROUTING_NODE_INDEX] + 2 + 1; // 2 = fid len
+      
+  int sum_istall_cell = 0; //TODO calculate sum of cells should be counted until previous hop
+  int sum_unistall_cell = 0;
+  
+  //calculate sum of unistall cells
+  for(i=0; i < config->packet.payload[CONF_NUM_SOURCE_ROUTING_NODE_INDEX] - 1; i++) {
+    sum_unistall_cell = sum_unistall_cell + ((config->packet.payload[hop_list_index + i + 1] & 0xf0) >> 4);
+  }
+   
+  int first_free_room = 0;
+  for(i=0; i<conf_main_list.len; i++) {
+    if(conf_main_list.cell_list[i] == -1) {
+      first_free_room = i;
+      break;
+    }
+  }    
+    
+  // init add2
+  for(j = 0; j< LINKADDR_SIZE; ++j) {
+    my_addr2.u8[j] = config->packet.payload[counter];
+    counter++;
+  }
+    
+  // loop over hops on old config
+  for(i=0; i<config->packet.payload[CONF_NUM_SOURCE_ROUTING_NODE_INDEX] - 1; i++) {
+    linkaddr_copy(&my_addr1, &my_addr2);
+    my_addr1_index++;
+      
+    for(j = 0; j< LINKADDR_SIZE; ++j) {
+      my_addr2.u8[j] = config->packet.payload[counter];
+      counter++;
+    }
+      
+    
+    if(addr1 != NULL && addr2 != NULL) {
+      if(linkaddr_cmp(&my_addr1, addr1) && linkaddr_cmp(&my_addr2, addr2)) {
+        printf("reconf test 4\n");
+        int k;
+        schedule_index = schedule_index + ((sum_istall_cell + sum_unistall_cell) * CONFIG_CELL_SIZE);
+      
+        for(k = 0; k < (config->packet.payload[hop_list_index + my_addr1_index] & 0xf); k++) { 
+          conf_main_list.cell_list[first_free_room] = config->packet.payload[schedule_index];
+          first_free_room++;
+          schedule_index++;
+          conf_main_list.cell_list[first_free_room] = config->packet.payload[schedule_index];
+          first_free_room++;
+          schedule_index++;
+          conf_main_list.cell_list[first_free_room] = config->packet.payload[schedule_index];
+          first_free_room++;
+          schedule_index++;
+        }   
+      
+        return (config->packet.payload[hop_list_index + my_addr1_index] & 0xf);
+      }
+    } else if(addr1 != NULL && addr2 == NULL) {
+      if(linkaddr_cmp(&my_addr1, addr1)) {
+         printf("reconf test 4\n");
+        int k;
+        schedule_index = schedule_index + ((sum_istall_cell + sum_unistall_cell) * CONFIG_CELL_SIZE);
+      
+        for(k = 0; k < (config->packet.payload[hop_list_index + my_addr1_index] & 0xf); k++) { 
+          conf_main_list.cell_list[first_free_room] = config->packet.payload[schedule_index];
+          first_free_room++;
+          schedule_index++;
+          conf_main_list.cell_list[first_free_room] = config->packet.payload[schedule_index];
+          first_free_room++;
+          schedule_index++;
+          conf_main_list.cell_list[first_free_room] = config->packet.payload[schedule_index];
+          first_free_room++;
+          schedule_index++;
+        }   
+      
+        return (config->packet.payload[hop_list_index + my_addr1_index] & 0xf);
+      }
+    } else if(addr1 == NULL && addr2 != NULL) {
+      if(linkaddr_cmp(&my_addr2, addr2)) {
+         printf("reconf test 5\n");
+        int k;
+        schedule_index = schedule_index + ((sum_istall_cell + sum_unistall_cell) * CONFIG_CELL_SIZE);
+      
+        for(k = 0; k < (config->packet.payload[hop_list_index + my_addr1_index] & 0xf); k++) { 
+          conf_main_list.cell_list[first_free_room] = config->packet.payload[schedule_index];
+          first_free_room++;
+          schedule_index++;
+          conf_main_list.cell_list[first_free_room] = config->packet.payload[schedule_index];
+          first_free_room++;
+          schedule_index++;
+          conf_main_list.cell_list[first_free_room] = config->packet.payload[schedule_index];
+          first_free_room++;
+          schedule_index++;
+        }   
+      
+        return (config->packet.payload[hop_list_index + my_addr1_index] & 0xf);
+      }
+    }
+    
+ 
+    // sum install cells
+    sum_istall_cell = sum_istall_cell + (config->packet.payload[hop_list_index + my_addr1_index] & 0xf);
+  }
+  return -1;
 }
 /*---------------------------------------------------------------------------*/
 /* add shared cells to the list of cells */
@@ -2345,9 +2996,9 @@ void
 init_num_shared_cells(void)
 {
 
-  //float cell_ratio = (float)NETWORK_SIZE/(int)((TSCH_EB_PERIOD/10) / SDN_DATA_SLOTFRAME_SIZE);
+  float cell_ratio = (float)NETWORK_SIZE/(int)((TSCH_EB_PERIOD/10) / SDN_DATA_SLOTFRAME_SIZE);
 
-  //int extra_shared_cells = calculate_num_shared_cell();
+  int extra_shared_cells = calculate_num_shared_cell();
   
   //printf("cell ration0: %f, eb/sf: %d\n", cell_ratio, (int)((TSCH_EB_PERIOD/10) / SDN_DATA_SLOTFRAME_SIZE));
   //printf("cell ration diff: %f", cell_ratio - (int)cell_ratio);
@@ -2368,10 +3019,10 @@ init_num_shared_cells(void)
   }
   */
   //printf("cell ration2: %f\n", cell_ratio);
-#if SDN_SHARED_CONTROL_PLANE
-  //sdn_num_shared_cell = (int)(cell_ratio + extra_shared_cells);
-  sdn_num_shared_cell = NETWORK_SIZE * 15;
-#endif
+//#if SDN_SHARED_CONTROL_PLANE
+  sdn_num_shared_cell = (int)(cell_ratio + extra_shared_cells);
+  //sdn_num_shared_cell = NETWORK_SIZE * 15;
+//#endif
   sdn_num_shared_cell_in_rep = (int)ceil(((float)sdn_num_shared_cell / (float)(SDN_DATA_SLOTFRAME_SIZE / SDN_SF_REP_PERIOD)));
                                //(int)ceil((float)((float)sdn_num_shared_cell / (float)num_rep))
   printf("sdn_num_shared_cell: %d, sdn_num_shared_cell_in_rep: %d\n", sdn_num_shared_cell, sdn_num_shared_cell_in_rep);

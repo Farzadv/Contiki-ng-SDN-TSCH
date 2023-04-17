@@ -1,0 +1,8 @@
+#ifndef _SDN_POSITION_H_
+#define _SDN_POSITION_H_
+#include "contiki.h"
+
+POS_ARRAY = {{0, 0}, {-4.911346992114886, 11.53838496921702}, {0.8487437722096445, 26.742117595124526}}
+
+#endif
+

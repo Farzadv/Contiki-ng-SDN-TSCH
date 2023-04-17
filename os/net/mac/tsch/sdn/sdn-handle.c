@@ -120,14 +120,30 @@ sdn_handle_config_packet(struct sdn_packet *p, uint16_t len, const linkaddr_t *s
   if(is_first_node_in_src_route) {
     int flow_id_index;
     int sf_id_index;
-    int next_num_cell_per_hop;
-    uint16_t repe_counter;
     uint16_t repe_num;
     struct sdn_link link;
     
-    next_num_cell_per_hop = p->payload[counter+(position_in_src_route_list - 1)];
-    if(next_num_cell_per_hop > 0) {
+    int next_num_cell_per_hop_install = (p->payload[counter+(position_in_src_route_list - 1)]) & 0x0f;
+    int next_num_cell_per_hop_uninstall = ((p->payload[counter+(position_in_src_route_list - 1)]) & 0xf0) >> 4;
+    
+    int uninstall_cell_index = counter + (p->payload[CONF_NUM_SOURCE_ROUTING_NODE_INDEX] - 1) + 3; // 3 is offset of flow-id and SF
+    
+    
+    /* specify install cell index */
+    int x;
+    int sum_lapsed_cell_uninstall_tot = 0;
+    for(x=0; x < p->payload[CONF_NUM_SOURCE_ROUTING_NODE_INDEX] - 1; x++) {
+      sum_lapsed_cell_uninstall_tot = ((p->payload[counter + x] & 0xf0) >> 4) + sum_lapsed_cell_uninstall_tot;
+    }
+    int install_cell_index = uninstall_cell_index + (sum_lapsed_cell_uninstall_tot * CONFIG_CELL_SIZE);
+    
+    
+    
+    
+    if(next_num_cell_per_hop_install > 0 || next_num_cell_per_hop_uninstall > 0) {
+      
       counter = counter + ((p->payload[CONF_NUM_SOURCE_ROUTING_NODE_INDEX]) - 1);
+      
       flow_id_index = counter;
       counter = counter + 2;
       sf_id_index = counter;
@@ -156,12 +172,27 @@ sdn_handle_config_packet(struct sdn_packet *p, uint16_t len, const linkaddr_t *s
       if(repe_period<1) {
         repe_period = SDN_DATA_SLOTFRAME_SIZE;
       }
-      repe_counter = counter;
+   
       repe_num = SDN_DATA_SLOTFRAME_SIZE/repe_period;
       
-      for(m=0; m<repe_num; m++) {
-        counter = repe_counter;
-        for(i=0; i<next_num_cell_per_hop; i++) {
+      for(m=0; m<repe_num; m++) {  
+         
+        /* uninstall cells */
+        counter = uninstall_cell_index;
+        for(i=0; i<next_num_cell_per_hop_uninstall; i++) {
+          link.slot = p->payload[counter + 1];
+          link.slot = (link.slot <<8) + p->payload[counter];
+          counter = counter + 2;
+          link.channel_offset = p->payload[counter]; 
+          counter++;
+    
+          tsch_schedule_remove_link_by_timeslot(sf, link.slot + (m * repe_period), link.channel_offset);
+
+        }
+        
+        /* install cells */
+        counter = install_cell_index;
+        for(i=0; i<next_num_cell_per_hop_install; i++) {
           link.slot = p->payload[counter + 1];
           link.slot = (link.slot <<8) + p->payload[counter];
           counter = counter + 2;
@@ -176,7 +207,7 @@ sdn_handle_config_packet(struct sdn_packet *p, uint16_t len, const linkaddr_t *s
       }
       
       printf("install rx cells: node[%d%d], flow id[%d], num cell[%d], asn[0x%x]]\n", linkaddr_node_addr.u8[0], linkaddr_node_addr.u8[1],
-            flow_id.u8[0], (repe_num * next_num_cell_per_hop), tsch_current_asn.ls4b);
+            flow_id.u8[0], (repe_num * next_num_cell_per_hop_install), tsch_current_asn.ls4b);
       
       //tsch_schedule_print();
     } else {
@@ -189,16 +220,33 @@ sdn_handle_config_packet(struct sdn_packet *p, uint16_t len, const linkaddr_t *s
     int flow_id_index;
     int sf_id_index;
     static struct sdn_link link;
-    int prvs_num_cell_per_hop;
-    int sum_lapsed_cell = 0;
-    uint16_t repe_counter;
+    int sum_lapsed_cell_install = 0;
+    int sum_lapsed_cell_uninstall = 0;
     uint16_t repe_num;
     
-    prvs_num_cell_per_hop = p->payload[counter+(position_in_src_route_list - 2)];
-    if(prvs_num_cell_per_hop > 0) {
+    int prvs_num_cell_per_hop_install = p->payload[counter+(position_in_src_route_list - 2)] & 0x0f;
+    int prvs_num_cell_per_hop_uninstall = (p->payload[counter + (position_in_src_route_list - 2)] & 0xf0) >> 4;
+    
+    int uninstall_cell_index = counter + (p->payload[CONF_NUM_SOURCE_ROUTING_NODE_INDEX] - 1) + 3; // 3 is offset of flow-id and SF
+    
+    /* specify install cell index */
+    int x;
+    int sum_lapsed_cell_uninstall_tot = 0;
+    for(x=0; x < p->payload[CONF_NUM_SOURCE_ROUTING_NODE_INDEX] - 1; x++) {
+      sum_lapsed_cell_uninstall_tot = ((p->payload[counter + x] & 0xf0) >> 4) + sum_lapsed_cell_uninstall_tot;
+    }
+    int install_cell_index = uninstall_cell_index + (sum_lapsed_cell_uninstall_tot * CONFIG_CELL_SIZE);
+    
+    
+    if(prvs_num_cell_per_hop_install > 0 || prvs_num_cell_per_hop_uninstall > 0) {
+    
       for(i=0; i<(position_in_src_route_list - 2); i++) {
-        sum_lapsed_cell = p->payload[counter+i] + sum_lapsed_cell;
+        sum_lapsed_cell_install = (p->payload[counter+i] & 0x0f) + sum_lapsed_cell_install;
+        sum_lapsed_cell_uninstall = ((p->payload[counter+i] & 0xf0) >> 4) + sum_lapsed_cell_uninstall;
       }
+      
+      
+      
       counter = counter + ((p->payload[CONF_NUM_SOURCE_ROUTING_NODE_INDEX]) - 1);
       //printf("check 1: sum_lapsed_cell:%d, counter: %d , pcounter:%d\n", sum_lapsed_cell, counter, p->payload[counter]);
       flow_id_index = counter;
@@ -224,7 +272,6 @@ sdn_handle_config_packet(struct sdn_packet *p, uint16_t len, const linkaddr_t *s
         sf = sf0;
       }
       link.link_option = LINK_OPTION_TX;
-      counter = counter + (sum_lapsed_cell * CONFIG_CELL_SIZE);
       
       
       repe_period = p->payload[CONF_REPETION_PERIOD + 1];
@@ -232,12 +279,30 @@ sdn_handle_config_packet(struct sdn_packet *p, uint16_t len, const linkaddr_t *s
       if(repe_period<1) {
         repe_period = SDN_DATA_SLOTFRAME_SIZE;
       }
-      repe_counter = counter;
       repe_num = SDN_DATA_SLOTFRAME_SIZE/repe_period;
       //LOG_INFO("sdn-handle: config repe_period: %d, repe_num:%d \n", repe_period, repe_num);
       for(m=0; m<repe_num; m++) {
-        counter = repe_counter;
-        for(i=0; i<prvs_num_cell_per_hop; i++) {
+        
+        /* uinstall cells */
+        counter = uninstall_cell_index + (sum_lapsed_cell_uninstall * CONFIG_CELL_SIZE);
+        for(i=0; i<prvs_num_cell_per_hop_uninstall; i++) {
+          link.slot = p->payload[counter + 1];
+          link.slot = (link.slot <<8) + p->payload[counter];
+          counter = counter + 2;
+          link.channel_offset = p->payload[counter]; 
+          counter++;
+          
+          /* remove flow cells from the scheduling table */
+          tsch_schedule_remove_link_by_timeslot(sf, link.slot + (m * repe_period), link.channel_offset);
+          
+          /* remove flow-id from the flow table */
+          sdn_remove_flow_entry(&link.flow_id, link.sf, link.slot + (m * repe_period), link.channel_offset, 0);  // set priority to 0
+        
+        }
+        
+        /* install cells */
+        counter = install_cell_index + (sum_lapsed_cell_install * CONFIG_CELL_SIZE);
+        for(i=0; i<prvs_num_cell_per_hop_install; i++) {
           link.slot = p->payload[counter + 1];
           link.slot = (link.slot <<8) + p->payload[counter];
           counter = counter + 2;
@@ -299,18 +364,42 @@ sdn_handle_config_packet(struct sdn_packet *p, uint16_t len, const linkaddr_t *s
     int flow_id_index;
     int sf_id_index;
     struct sdn_link link;
-    int next_num_cell_per_hop;
-    int prvs_num_cell_per_hop;
-    uint16_t repe_counter;
     uint16_t repe_num;
     
-    prvs_num_cell_per_hop = p->payload[counter+(position_in_src_route_list - 2)];
-    next_num_cell_per_hop = p->payload[counter+(position_in_src_route_list - 1)];
-    if(prvs_num_cell_per_hop > 0 && next_num_cell_per_hop > 0) {
-      int sum_lapsed_cell = 0;
-      for(i=0; i<(position_in_src_route_list - 2); i++) {
-        sum_lapsed_cell = p->payload[counter+i] + sum_lapsed_cell;
-      }
+    int sum_lapsed_cell_install_prvs = 0;
+    int sum_lapsed_cell_uninstall_prvs = 0;
+    int sum_lapsed_cell_install_next = 0;
+    int sum_lapsed_cell_uninstall_next = 0;
+    
+    int prvs_num_cell_per_hop_install = (p->payload[counter+(position_in_src_route_list - 2)]) & 0x0f;
+    int prvs_num_cell_per_hop_uninstall = ((p->payload[counter+(position_in_src_route_list - 2)]) & 0xf0) >> 4;
+    
+    int next_num_cell_per_hop_install = (p->payload[counter+(position_in_src_route_list - 1)]) & 0x0f;
+    int next_num_cell_per_hop_uninstall = ((p->payload[counter+(position_in_src_route_list - 1)]) & 0xf0) >> 4;
+    
+    
+    int uninstall_cell_index = counter + (p->payload[CONF_NUM_SOURCE_ROUTING_NODE_INDEX] - 1) + 3; // 3 is offset of flow-id and SF
+    
+    /* specify install cell index */
+    int x;
+    int sum_lapsed_cell_uninstall_tot = 0;
+    for(x=0; x < p->payload[CONF_NUM_SOURCE_ROUTING_NODE_INDEX] - 1; x++) {
+      sum_lapsed_cell_uninstall_tot = ((p->payload[counter + x] & 0xf0) >> 4) + sum_lapsed_cell_uninstall_tot;
+    }
+    int install_cell_index = uninstall_cell_index + (sum_lapsed_cell_uninstall_tot * CONFIG_CELL_SIZE);
+    
+    for(i=0; i<(position_in_src_route_list - 2); i++) {
+      sum_lapsed_cell_install_prvs = (p->payload[counter+i] & 0x0f) + sum_lapsed_cell_install_prvs;
+      sum_lapsed_cell_uninstall_prvs = ((p->payload[counter+i] & 0xf0) >> 4) + sum_lapsed_cell_uninstall_prvs;
+    }
+    
+    for(i=0; i<(position_in_src_route_list - 1); i++) {
+      sum_lapsed_cell_install_next = (p->payload[counter+i] & 0x0f) + sum_lapsed_cell_install_next;
+      sum_lapsed_cell_uninstall_next = ((p->payload[counter+i] & 0xf0) >> 4) + sum_lapsed_cell_uninstall_next;
+    }
+      
+    if((prvs_num_cell_per_hop_install > 0 || prvs_num_cell_per_hop_uninstall > 0)  && (next_num_cell_per_hop_install > 0 || next_num_cell_per_hop_uninstall > 0)) {
+
       counter = counter + ((p->payload[CONF_NUM_SOURCE_ROUTING_NODE_INDEX]) - 1);
       flow_id_index = counter;
       counter = counter + 2;
@@ -334,19 +423,37 @@ sdn_handle_config_packet(struct sdn_packet *p, uint16_t len, const linkaddr_t *s
       else{
         sf = sf0;
       }
-      counter = counter + (sum_lapsed_cell * CONFIG_CELL_SIZE);
       
       repe_period = p->payload[CONF_REPETION_PERIOD + 1];
       repe_period = (repe_period <<8) + p->payload[CONF_REPETION_PERIOD];
       if(repe_period<1) {
         repe_period = SDN_DATA_SLOTFRAME_SIZE;
       }
-      repe_counter = counter;
+
       repe_num = SDN_DATA_SLOTFRAME_SIZE/repe_period;
       
       for(m=0; m<repe_num; m++) {
-        counter = repe_counter;
-        for(i=0; i<prvs_num_cell_per_hop; i++) {
+      
+        /* uinstall cells */
+        counter = uninstall_cell_index + (sum_lapsed_cell_uninstall_prvs * CONFIG_CELL_SIZE);
+        for(i=0; i<prvs_num_cell_per_hop_uninstall; i++) {
+          link.link_option = LINK_OPTION_TX;
+          link.slot = p->payload[counter + 1];
+          link.slot = (link.slot <<8) + p->payload[counter];
+          counter = counter + 2;
+	  link.channel_offset = p->payload[counter]; 
+	  counter++;
+	  
+	  /* remove flow cells from the scheduling table */
+          tsch_schedule_remove_link_by_timeslot(sf, link.slot + (m * repe_period), link.channel_offset);    
+		               
+          /* remove flow-id from the flow table */
+          sdn_remove_flow_entry(&link.flow_id, link.sf, link.slot + (m * repe_period), link.channel_offset, 0);  // set priority to 0  
+        }
+      
+        /* install cells */
+        counter = install_cell_index + (sum_lapsed_cell_install_prvs * CONFIG_CELL_SIZE);
+        for(i=0; i<prvs_num_cell_per_hop_install; i++) {
           link.link_option = LINK_OPTION_TX;
           link.slot = p->payload[counter + 1];
           link.slot = (link.slot <<8) + p->payload[counter];
@@ -378,10 +485,28 @@ sdn_handle_config_packet(struct sdn_packet *p, uint16_t len, const linkaddr_t *s
       // next hop config
       linkaddr_copy(&link.addr, &next_hop_addr);
       
-      repe_counter = counter;
       for(m=0; m<repe_num; m++) {
-        counter = repe_counter;
-        for(i=0; i<next_num_cell_per_hop; i++) {
+       
+        /* uninstall cells */
+        counter = uninstall_cell_index + (sum_lapsed_cell_uninstall_next * CONFIG_CELL_SIZE);
+        for(i=0; i<next_num_cell_per_hop_uninstall; i++) {
+          link.slot = p->payload[counter + 1];
+          link.slot = (link.slot <<8) + p->payload[counter];
+          counter = counter + 2;
+	  link.channel_offset = p->payload[counter]; 
+	  counter++;
+	  
+	  /* remove flow cells from the scheduling table */
+          tsch_schedule_remove_link_by_timeslot(sf, link.slot + (m * repe_period), link.channel_offset);
+          
+          /* remove flow-id from the flow table */
+          sdn_remove_flow_entry(&link.flow_id, link.sf, link.slot + (m * repe_period), link.channel_offset, 0);  // set priority to 0
+	                       
+        }
+      
+        /* install cells */    
+        counter = install_cell_index + (sum_lapsed_cell_install_next * CONFIG_CELL_SIZE);
+        for(i=0; i<next_num_cell_per_hop_install; i++) {
           link.slot = p->payload[counter + 1];
           link.slot = (link.slot <<8) + p->payload[counter];
           counter = counter + 2;
@@ -413,14 +538,11 @@ sdn_handle_config_packet(struct sdn_packet *p, uint16_t len, const linkaddr_t *s
       }
       
       printf("install rx cells: node[%d%d], flow id[%d], num cell[%d], asn[0x%x]]\n", linkaddr_node_addr.u8[0], linkaddr_node_addr.u8[1],
-            flow_id.u8[0], (repe_num * next_num_cell_per_hop), tsch_current_asn.ls4b);
+            flow_id.u8[0], (repe_num * next_num_cell_per_hop_install), tsch_current_asn.ls4b);
       
       //tsch_schedule_print();
-    } else if(prvs_num_cell_per_hop == 0 && next_num_cell_per_hop > 0) {
-      int sum_lapsed_cell = 0;
-      for(i=0; i<(position_in_src_route_list - 1); i++) {
-        sum_lapsed_cell = p->payload[counter+i] + sum_lapsed_cell;
-      }
+    } else if(prvs_num_cell_per_hop_install == 0 && (next_num_cell_per_hop_install > 0 || next_num_cell_per_hop_uninstall > 0)) {
+
       counter = counter + ((p->payload[CONF_NUM_SOURCE_ROUTING_NODE_INDEX]) - 1);
       flow_id_index = counter;
       counter = counter + 2;
@@ -444,7 +566,6 @@ sdn_handle_config_packet(struct sdn_packet *p, uint16_t len, const linkaddr_t *s
       else{
         sf = sf0;
       }
-      counter = counter + (sum_lapsed_cell * CONFIG_CELL_SIZE);
       
       repe_period = p->payload[CONF_REPETION_PERIOD + 1];
       repe_period = (repe_period <<8) + p->payload[CONF_REPETION_PERIOD];
@@ -452,12 +573,30 @@ sdn_handle_config_packet(struct sdn_packet *p, uint16_t len, const linkaddr_t *s
       if(repe_period<1) {
         repe_period = SDN_DATA_SLOTFRAME_SIZE;
       }
-      repe_counter = counter;
+
       repe_num = SDN_DATA_SLOTFRAME_SIZE/repe_period;
 
       for(m=0; m<repe_num; m++) {
-        counter = repe_counter;
-        for(i=0; i<next_num_cell_per_hop; i++) {
+        /* uinstall cells */
+        counter = uninstall_cell_index + (sum_lapsed_cell_uninstall_next * CONFIG_CELL_SIZE);
+        for(i=0; i<next_num_cell_per_hop_uninstall; i++) {
+          link.slot = p->payload[counter + 1];
+          link.slot = (link.slot <<8) + p->payload[counter];
+          counter = counter + 2;
+	  link.channel_offset = p->payload[counter]; 
+          counter++;
+	    
+	  /* remove flow cells from the scheduling table */
+          tsch_schedule_remove_link_by_timeslot(sf, link.slot + (m * repe_period), link.channel_offset);
+          
+          /* remove flow-id from the flow table */
+          sdn_remove_flow_entry(&link.flow_id, link.sf, link.slot + (m * repe_period), link.channel_offset, 0);  // set priority to 0
+	                       
+        }
+        
+        /* install cells */ 
+        counter = install_cell_index + (sum_lapsed_cell_install_next * CONFIG_CELL_SIZE);
+        for(i=0; i<next_num_cell_per_hop_install; i++) {
           link.slot = p->payload[counter + 1];
           link.slot = (link.slot <<8) + p->payload[counter];
           counter = counter + 2;
@@ -490,7 +629,7 @@ sdn_handle_config_packet(struct sdn_packet *p, uint16_t len, const linkaddr_t *s
       }
       
       printf("install rx cells: node[%d%d], flow id[%d], num cell[%d], asn[0x%x]]\n", linkaddr_node_addr.u8[0], linkaddr_node_addr.u8[1],
-            flow_id.u8[0], (repe_num * next_num_cell_per_hop), tsch_current_asn.ls4b);
+            flow_id.u8[0], (repe_num * next_num_cell_per_hop_install), tsch_current_asn.ls4b);
       
       //tsch_schedule_print();
     } else {

@@ -134,11 +134,19 @@ run command: java -Xshare:on -jar ../../tools/cooja/dist/cooja.jar -nogui=config
 */
 #define SDN_MDPI_TEST    0
 
+
+
+
+
+/* enable reconf test */
+#define SDN_CONF_RECONF_MODE  1
+
+
 /* SDN LOG Level */
 #define SDN_LOG_LEVEL                  LOG_LEVEL_INFO
 #define SDN_INOUT_LOG_LEVEL            LOG_LEVEL_WARN
-#define SDN_HANDLE_LOG_LEVEL           LOG_LEVEL_WARN
-#define SDN_FLOW_LOG_LEVEL             LOG_LEVEL_WARN
+#define SDN_HANDLE_LOG_LEVEL           LOG_LEVEL_INFO
+#define SDN_FLOW_LOG_LEVEL             LOG_LEVEL_INFO
 #define SDN_ALGO_LOG_LEVEL             LOG_LEVEL_INFO
 #define SDN_REQ_FLOW_LOG_LEVEL         LOG_LEVEL_INFO
 #define SDN_SINK_LOG_LEVEL             LOG_LEVEL_INFO
