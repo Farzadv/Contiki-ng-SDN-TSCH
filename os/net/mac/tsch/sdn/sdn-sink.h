@@ -44,6 +44,10 @@ struct rsrc_spec_of_config{
   int sf_id;
   int num_ts;
   int ch_off;
+  //they are used in the reconfiguration process
+  int revers_sch;
+  int first_cell_up;
+  int first_cell_down;
 };
 
 
@@ -95,7 +99,7 @@ int sdn_add_node_to_global_table(const linkaddr_t *node_addr, const linkaddr_t *
 
 struct list_of_shared_cell * get_shared_cell_list(void);
 
-int add_slot_to_taken_cell_list(const linkaddr_t *node_addr, int is_ctrl_cell, int slot_offset, int ch_offset);
+int add_slot_to_taken_cell_list(const linkaddr_t *node_addr, int is_ctrl_cell, int slot_offset, int ch_offset, int mark_reconf);
 
 int specify_to_ctrl_cell(const linkaddr_t *node_addr, int slot_offset, int ch_offset);
 int specify_from_ctrl_cell(const linkaddr_t *node_addr, int slot_offset, int ch_offset);

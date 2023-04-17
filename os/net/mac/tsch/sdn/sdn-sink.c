@@ -486,7 +486,7 @@ add_slot_to_global_ts_list(int slot, int ch_off)
 }
 /*---------------------------------------------------------------------------*/
 int 
-add_slot_to_taken_cell_list(const linkaddr_t *node_addr, int is_ctrl_cell, int slot_offset, int ch_offset)
+add_slot_to_taken_cell_list(const linkaddr_t *node_addr, int is_ctrl_cell, int slot_offset, int ch_offset, int mark_reconf)
 { 
   //int i;
   struct sdn_global_table_entry *e;
@@ -518,7 +518,11 @@ add_slot_to_taken_cell_list(const linkaddr_t *node_addr, int is_ctrl_cell, int s
         //LOG_INFO_LLADDR(&e->node_addr);
         //LOG_INFO("\n");
         return 1;
-      } 
+      } else if(mark_reconf) {
+        e->data_taken_slot[3][slot_offset] = mark_reconf;
+        LOG_INFO("CONTROLLER: mark reconf slot %d ch %d to node \n", e->data_taken_slot[0][slot_offset], e->data_taken_slot[1][slot_offset]);
+        return 1;
+      }
     }
   }
   return -1;
@@ -551,9 +555,9 @@ label_cell_to_be_used_for_reconfigure(const linkaddr_t *node_addr, const linkadd
      }
      if(e->data_taken_slot[0][slot_offset] != -1 && flow_id != NULL) {
         e->data_taken_slot[2][slot_offset] = flow_id->u8[0];
-        LOG_INFO("CONTROLLER: labe slot %d with ch %d, flow-id \n", e->data_taken_slot[0][slot_offset], e->data_taken_slot[1][slot_offset]);
-        LOG_INFO_LLADDR(flow_id);
-        LOG_INFO("\n");
+        //LOG_INFO("CONTROLLER: node %d%d labe slot %d with ch %d, flow-id %d \n", node_addr->u8[0], node_addr->u8[1], e->data_taken_slot[0][slot_offset], e->data_taken_slot[1][slot_offset], flow_id->u8[0]);
+        //LOG_INFO_LLADDR(flow_id);
+        //LOG_INFO("\n");
         return 1;
       } 
     }
@@ -746,7 +750,7 @@ sdn_add_node_to_global_table(const linkaddr_t *node_addr, const linkaddr_t *pare
         for(i=0; i<SHARED_CELL_LIST_LEN; i++) {
           if(shared_cell->cell_list[i] > -1) {
             //LOG_INFO("CONTROLLER: inside the func\n"); // must be removed
-            add_slot_to_taken_cell_list(node_addr, 0, shared_cell->cell_list[i], 0); // set ch_off of shared cell to 0, sf =0
+            add_slot_to_taken_cell_list(node_addr, 0, shared_cell->cell_list[i], 0, 0); // set ch_off of shared cell to 0, sf =0
           }
         }
       }  
@@ -1396,7 +1400,13 @@ add_schedule_to_config(struct sdn_packet *config, struct rsrc_spec_of_config *re
   }
   else{
     //last_ts = SDN_SF_REP_PERIOD;
-    last_ts = req_spec->app_qos.traffic_period;
+    if(req_spec->revers_sch == 0 && req_spec->first_cell_up > -1) {
+      last_ts = req_spec->first_cell_up;
+    } else if(req_spec->revers_sch == 1 && req_spec->first_cell_down > -1) {
+      last_ts = req_spec->first_cell_down;
+    } else {
+      last_ts = req_spec->app_qos.traffic_period;
+    }
   }
   
   //SF ID 
@@ -1448,7 +1458,7 @@ add_schedule_to_config(struct sdn_packet *config, struct rsrc_spec_of_config *re
         config->payload[schedule_index] = ch; //TODO
         schedule_index++;
         for(m = 0; m < repetition_num; m++) {
-          add_slot_to_taken_cell_list(&addr1, req_id->is_ctrl, e2->from_ctrl_slot + (m*req_spec->app_qos.traffic_period), ch);
+          add_slot_to_taken_cell_list(&addr1, req_id->is_ctrl, e2->from_ctrl_slot + (m*req_spec->app_qos.traffic_period), ch, 0);
         }
       } else{
         int slot_busy = 1;
@@ -1506,19 +1516,52 @@ add_schedule_to_config(struct sdn_packet *config, struct rsrc_spec_of_config *re
             int m;
             for(m = 0; m < repetition_num; m++) {     
               // TODO [mustdo] we should consider this ts is freed recently and can be allocated to a flow its owner: can be used by another flow but not another node in the network. so if KEY is 1 it means ts is freed and not used by another flow of node if 2 means freed but used by nother flow of the node ::: the ts should be busy for both of nodes          
-              if(e1->data_taken_slot[0][(last_ts + (m*req_spec->app_qos.traffic_period))] > -1 ||
+              if(e1->data_taken_slot[0][(last_ts + (m*req_spec->app_qos.traffic_period))] > -1 &&
                  e2->data_taken_slot[0][(last_ts + (m*req_spec->app_qos.traffic_period))] > -1) {
-                slot_busy = 1;
-                //LOG_INFO("CONTROLLER: TO or FROM taken slot %d \n", last_ts);
-                break;
+                 // check it is our previous cell and I can use it in reconfiguation 
+                 if(e1->data_taken_slot[2][(last_ts + (m*req_spec->app_qos.traffic_period))] != req_spec->flow_id.u8[0] ||
+                    e2->data_taken_slot[2][(last_ts + (m*req_spec->app_qos.traffic_period))] != req_spec->flow_id.u8[0]) {
+                   slot_busy = 1;
+                   //LOG_INFO("CONTROLLER: TO or FROM taken slot1 %d \n", last_ts);
+                   break;
+                }
+              } else if(e1->data_taken_slot[0][(last_ts + (m*req_spec->app_qos.traffic_period))] > -1 &&
+                 e2->data_taken_slot[0][(last_ts + (m*req_spec->app_qos.traffic_period))] == -1) {
+                 if(e1->data_taken_slot[2][(last_ts + (m*req_spec->app_qos.traffic_period))] != req_spec->flow_id.u8[0]) {
+                   slot_busy = 1;
+                   //LOG_INFO("CONTROLLER: TO or FROM taken slot2 %d \n", last_ts);
+                   break;
+                }
+              
+              } else if(e1->data_taken_slot[0][(last_ts + (m*req_spec->app_qos.traffic_period))] == -1 &&
+                 e2->data_taken_slot[0][(last_ts + (m*req_spec->app_qos.traffic_period))] > -1){
+                  if(e2->data_taken_slot[2][(last_ts + (m*req_spec->app_qos.traffic_period))] != req_spec->flow_id.u8[0]) {
+                   slot_busy = 1;
+                   //LOG_INFO("CONTROLLER: TO or FROM taken slot3 %d \n", last_ts);
+                   break;
+                }
               }
             }
           }
           if(slot_busy == 0) { 
-            int ch_ok;
-            if((ch_ok = find_free_channels_for_ts(last_ts, req_spec->app_qos.traffic_period, &channel_off)) == -1) {
-              //LOG_INFO("CONTROLLER: cannot find a free ch_off %d \n", last_ts);
-              slot_busy = 1;
+          
+            if((e1->data_taken_slot[2][last_ts] == req_spec->flow_id.u8[0] && e2->data_taken_slot[2][last_ts] == req_spec->flow_id.u8[0]) && e1->data_taken_slot[1][last_ts] > -1) {
+              channel_off = e1->data_taken_slot[1][last_ts];
+              LOG_INFO("CONTROLLER: use old slot %d, ch %d \n", last_ts, channel_off);
+              
+            } else if((e1->data_taken_slot[2][last_ts] == req_spec->flow_id.u8[0] && e2->data_taken_slot[2][last_ts] != req_spec->flow_id.u8[0]) && e1->data_taken_slot[1][last_ts] > -1) {
+              channel_off = e1->data_taken_slot[1][last_ts];
+              LOG_INFO("CONTROLLER: use old slot %d, ch %d \n", last_ts, channel_off);
+              
+            } else if((e1->data_taken_slot[2][last_ts] != req_spec->flow_id.u8[0] && e2->data_taken_slot[2][last_ts] == req_spec->flow_id.u8[0]) && e2->data_taken_slot[1][last_ts] > -1) {
+              channel_off = e2->data_taken_slot[1][last_ts];
+              LOG_INFO("CONTROLLER: use old slot %d, ch %d \n", last_ts, channel_off);
+            } else {
+              int ch_ok;
+              if((ch_ok = find_free_channels_for_ts(last_ts, req_spec->app_qos.traffic_period, &channel_off)) == -1) {
+                //LOG_INFO("CONTROLLER: cannot find a free ch_off %d \n", last_ts);
+                slot_busy = 1;
+              }
             }
           }
           
@@ -1534,6 +1577,9 @@ add_schedule_to_config(struct sdn_packet *config, struct rsrc_spec_of_config *re
             }
 
             int m;
+            int mark_as_reconf_cell_addr1 = (e1->data_taken_slot[2][last_ts] == req_spec->flow_id.u8[0]) ? 1 : 0;
+            int mark_as_reconf_cell_addr2 = (e2->data_taken_slot[2][last_ts] == req_spec->flow_id.u8[0]) ? 1 : 0;
+            
             config->payload[schedule_index] = last_ts & 0xff;
             schedule_index++;
             config->payload[schedule_index] = ((last_ts) >>8) & 0xff;
@@ -1541,17 +1587,20 @@ add_schedule_to_config(struct sdn_packet *config, struct rsrc_spec_of_config *re
             config->payload[schedule_index] = channel_off;
             schedule_index++;
             for(m = 0; m < repetition_num; m++) {
-              int fali_to_add_cell;
-              fali_to_add_cell = add_slot_to_taken_cell_list(&addr1, req_id->is_ctrl, last_ts + (m*req_spec->app_qos.traffic_period), channel_off);
-              if(fali_to_add_cell == -1)
-              {
+              int fail_to_add_cell;
+              
+              fail_to_add_cell = add_slot_to_taken_cell_list(&addr1, req_id->is_ctrl, last_ts + (m*req_spec->app_qos.traffic_period), channel_off, mark_as_reconf_cell_addr1);
+              
+              if(fail_to_add_cell == -1) {
                 LOG_INFO("CONTROLLER: fail to allocate cell: ts %d, ch %d \n", last_ts + (m*req_spec->app_qos.traffic_period), channel_off);
               }
-              fali_to_add_cell = add_slot_to_taken_cell_list(&addr2, req_id->is_ctrl, last_ts + (m*req_spec->app_qos.traffic_period), channel_off);
-              if(fali_to_add_cell == -1)
-              {
+              
+              fail_to_add_cell = add_slot_to_taken_cell_list(&addr2, req_id->is_ctrl, last_ts + (m*req_spec->app_qos.traffic_period), channel_off, mark_as_reconf_cell_addr2);
+              
+              if(fail_to_add_cell == -1) {
                 LOG_INFO("CONTROLLER: fail to allocate cell: ts %d, ch %d \n", last_ts + (m*req_spec->app_qos.traffic_period), channel_off);
               }
+              
               add_slot_to_global_ts_list(last_ts + (m*req_spec->app_qos.traffic_period), channel_off);
 
               //LOG_INFO("CONTROLLER: slot %d is free \n", last_ts + (m*req_spec->app_qos.traffic_period));
@@ -2010,6 +2059,9 @@ trigger_from_controller_config_immediately(const linkaddr_t *sender_addr, int re
   req_spec->sf_id = 0;
   req_spec->num_ts = 1;
   req_spec->ch_off = 0;
+  req_spec->revers_sch = 0; 
+  req_spec->first_cell_up = -1;   
+  req_spec->first_cell_down = -1;
   
   
   if(req_spec != NULL && req_id != NULL && !linkaddr_cmp(&req_spec->dest_addr, &linkaddr_null)) {
@@ -2019,12 +2071,13 @@ trigger_from_controller_config_immediately(const linkaddr_t *sender_addr, int re
   if(created_conf != NULL) {
     
     insert_old_schedule_in_config(created_conf, req_id, req_spec);
-    
+    /*
     int i;
     LOG_INFO("created conf-best len %u\n", created_conf->len);
     for (i=0; i<created_conf->len -1; i++) {
       LOG_INFO("created config-best %u\n", created_conf->packet.payload[i]);
     } 
+    */
     sdn_handle_config_packet(&created_conf->packet, created_conf->len, &linkaddr_null);
   }
   
@@ -2107,13 +2160,21 @@ get_resource_spec_from_request(struct sdn_packet* p, struct request_id *req_id)
     }
     req_spec->sf_id = 0;
     req_spec->num_ts = 1;
-    req_spec->ch_off = 0;    
+    req_spec->ch_off = 0;
+    req_spec->revers_sch = 0; 
+    req_spec->first_cell_up = -1;   
+    req_spec->first_cell_down = -1;
   }
   
   if((p->typ & 0x0f) == REQUEST) {
     req_spec->sf_id = 0;
     req_spec->num_ts = 1;
     req_spec->ch_off = 0;
+    req_spec->revers_sch = 0; 
+    req_spec->first_cell_up = -1;   
+    req_spec->first_cell_down = -1;
+    
+    
     if((free_flow_id = get_free_flow_id()) == NULL) {
       LOG_INFO("CONTROLLER: there is no free flow id\n");
       free(req_spec);
@@ -2342,7 +2403,7 @@ int
 reconfigure_network(struct sdn_packet* p, struct request_id *req_id)
 {  
   struct sdn_packet_info *new_conf = NULL;
-  int i;
+  //int i;
   //linkaddr_t addr_ca; //common ancestor (ca)
   linkaddr_t *addr_ca = NULL;
   struct sent_config_info *e;
@@ -2367,6 +2428,11 @@ reconfigure_network(struct sdn_packet* p, struct request_id *req_id)
   req_spec->num_ts = 1;
   req_spec->ch_off = 0;
   
+  /*
+    req_spec->revers_sch = 0; 
+    req_spec->first_cell_up = -1;   
+    req_spec->first_cell_down = -1;
+  */
   
   /************************/
   /* find common ancestor */
@@ -2393,11 +2459,12 @@ reconfigure_network(struct sdn_packet* p, struct request_id *req_id)
   if(new_conf != NULL) {
   
     insert_old_schedule_in_config(new_conf, req_id, req_spec);
-    
+ /*   
     LOG_INFO("created conf-best len %u\n", new_conf->len);
     for (i=0; i<new_conf->len -1; i++) {
       LOG_INFO("created config-best %u\n", new_conf->packet.payload[i]);
     }
+ */
     sdn_handle_config_packet(&new_conf->packet, new_conf->len, &linkaddr_null);
   
 #if !SDN_SHARED_CONTROL_PLANE
@@ -2438,22 +2505,29 @@ reconfigure_network(struct sdn_packet* p, struct request_id *req_id)
     
     if(req_spec != NULL) {
       
+      /* free old cells */
       if(addr_ca != NULL) {
           free_old_cells(&e->packet_info, addr_ca, &req_id->req_sender, &req_spec->flow_id);
         } else {
           LOG_ERR("no common ancestor found \n");
       }
+      /* *** */
       
       new_conf = request_confing_packet(req_id, req_spec);
+      
+      //if(!linkaddr_cmp(addr_ca, &sink_addr)) {
+        
+      //}
       
       if(new_conf != NULL) {
       
         insert_old_schedule_in_config(new_conf, req_id, req_spec);
-        
+   /*     
         LOG_INFO("created reconf-req len %u\n", new_conf->len);
         for (i=0; i<new_conf->len -1; i++) {
           LOG_INFO("created reconfig-req %u\n", new_conf->packet.payload[i]);
         }
+   */
         //sdn_handle_config_packet(&new_conf->packet, new_conf->len, &linkaddr_null);
       }
     }      
@@ -2541,7 +2615,7 @@ free_old_cells(struct sdn_packet_info *config, const linkaddr_t *addr1, const li
      
     if(find_starting_point) {
       /* loop over num install cells */
-      int k;
+      int k, m;
       int ts;
       int ch;
       
@@ -2552,8 +2626,15 @@ free_old_cells(struct sdn_packet_info *config, const linkaddr_t *addr1, const li
         schedule_index++;
         ch = config->packet.payload[schedule_index];
         schedule_index++;
-        label_cell_to_be_used_for_reconfigure(&my_addr1, flow_id, ts, ch);
-        label_cell_to_be_used_for_reconfigure(&my_addr2, flow_id, ts, ch);
+        
+        int rep_period = config->packet.payload[CONF_REPETION_PERIOD + 1];
+        rep_period = (rep_period <<8) + config->packet.payload[CONF_REPETION_PERIOD];
+        int rep_num =SDN_DATA_SLOTFRAME_SIZE/rep_period;
+        
+        for(m=0; m<rep_num; m++) {
+          label_cell_to_be_used_for_reconfigure(&my_addr1, flow_id, ts + (m * rep_period), ch);
+          label_cell_to_be_used_for_reconfigure(&my_addr2, flow_id, ts + (m * rep_period), ch);
+        }
       } 
     } 
   }
