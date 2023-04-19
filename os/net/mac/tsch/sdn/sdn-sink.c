@@ -51,6 +51,8 @@ static int shared_cell_alloc_list[max_sf_offset_num][SDN_DATA_SLOTFRAME_SIZE];
 linkaddr_t sink_addr;
 #define MAX_NUM_PENDING_CONFIG   15 // set same as the queue size
 
+#define MAX_SUBTREE 50
+static struct subtree subtree_list[MAX_SUBTREE];
 /*---------------------------------------------------------------------------*/
 /* Declaration */
 
@@ -101,6 +103,13 @@ void free_old_cells(struct sdn_packet_info *config, const linkaddr_t *addr1, con
 
 linkaddr_t * get_common_parent(struct sdn_packet_info *config, const linkaddr_t *node);
 
+int add_revers_schedule_to_config(struct sdn_packet *config, struct rsrc_spec_of_config *req_spec, struct request_id *req_id);
+
+int extract_first_txcell_of_hop(struct sdn_packet_info *config, struct request_id *req_id, struct rsrc_spec_of_config *req_spec, const linkaddr_t *node);
+
+int extract_last_rxcell_of_hop(struct sdn_packet_info *config, struct request_id *req_id, struct rsrc_spec_of_config *req_spec, const linkaddr_t *node);
+
+void get_list_of_subtree(const linkaddr_t *node);
 /*---------------------------------------------------------------------------*/
 /* list of shared cells */
 struct list_of_shared_cell shared_cell;
@@ -115,6 +124,7 @@ PROCESS(conf_handle_process, "conf handle process");
 struct sent_config_info{
   struct sent_config_info *next;
   struct request_id req_id;
+  struct rsrc_spec_of_config req_spec;
   struct sdn_packet_info packet_info;
   linkaddr_t ack_sender;
   int seq_num;
@@ -520,7 +530,7 @@ add_slot_to_taken_cell_list(const linkaddr_t *node_addr, int is_ctrl_cell, int s
         return 1;
       } else if(mark_reconf) {
         e->data_taken_slot[3][slot_offset] = mark_reconf;
-        LOG_INFO("CONTROLLER: mark reconf slot %d ch %d to node \n", e->data_taken_slot[0][slot_offset], e->data_taken_slot[1][slot_offset]);
+        //LOG_INFO("CONTROLLER: mark reconf slot %d ch %d to node \n", e->data_taken_slot[0][slot_offset], e->data_taken_slot[1][slot_offset]);
         return 1;
       }
     }
@@ -1367,6 +1377,213 @@ find_free_channels_for_ts(int slot, int rep_period, int *channel)
 }
 /*---------------------------------------------------------------------------*/
 int 
+add_revers_schedule_to_config(struct sdn_packet *config, struct rsrc_spec_of_config *req_spec, struct request_id *req_id)
+{
+ if(config == NULL || req_spec == NULL || req_id == NULL) {
+    return 0;
+  }
+  int i;
+  int k;
+  int last_ts;
+  uint8_t j;
+  int repetition_num;
+  
+  struct sdn_global_table_entry *e;
+  struct sdn_global_table_entry *e1;
+  struct sdn_global_table_entry *e2;
+  
+
+  int sr_len = config->payload[CONF_NUM_SOURCE_ROUTING_NODE_INDEX];
+  int hop_list_index_str = (sr_len * LINKADDR_SIZE) + CONF_LIST_OF_NODE_IN_PATH_INDEX; //start of hop/cell list
+  int hop_list_index_end = (sr_len * LINKADDR_SIZE) + CONF_LIST_OF_NODE_IN_PATH_INDEX + sr_len - 2; //end of hop/cell list
+  //int counter_str = CONF_LIST_OF_NODE_IN_PATH_INDEX; //start of SR
+  int counter_end = hop_list_index_str - 1; //end of SR
+  
+  int sum_install_cells = 0;
+  for(i=0; i<sr_len-1; i++) {
+    sum_install_cells = sum_install_cells + config->payload[hop_list_index_str + i];
+  }
+  
+  
+  int schedule_index_str = hop_list_index_str + sr_len -1 + 2; // 2 = fid len index of SF-id
+  int schedule_index_end = schedule_index_str + (sum_install_cells * CONFIG_CELL_SIZE); // 2 = fid len
+  
+  //LOG_INFO("CONTROLLER: hop_list_index %d \n", hop_list_index);
+   
+  linkaddr_t addr1;
+  linkaddr_t addr2;
+  
+  
+  if(req_spec->revers_sch == 1 && req_spec->first_cell_down > -1) {
+    last_ts = req_spec->first_cell_down;
+  } else {
+    LOG_INFO("CONTROLLER: invalid cell id to start \n");
+    return -1;
+  }
+  
+  //SF ID 
+  config->payload[schedule_index_str] = req_spec->sf_id;
+  schedule_index_str++;
+  
+  for(j = LINKADDR_SIZE - 1 ; j >= 0; j--) {
+    addr1.u8[j] = config->payload[counter_end];
+    counter_end--;
+  }
+  
+
+  config->payload[CONF_REPETION_PERIOD] = req_spec->app_qos.traffic_period & 0xff;
+  config->payload[CONF_REPETION_PERIOD + 1] = (req_spec->app_qos.traffic_period >>8) & 0xff;
+  
+  repetition_num = (int)(SDN_DATA_SLOTFRAME_SIZE/req_spec->app_qos.traffic_period);
+    
+    
+    
+    
+  /* ******iterate over hops****** */
+  for(i=0; i < sr_len - 1; i++) {
+  
+    linkaddr_copy(&addr2, &addr1);
+    
+    for(j = LINKADDR_SIZE - 1 ; j >= 0; j--) {
+      addr1.u8[j] = config->payload[counter_end];
+      counter_end--;
+    }
+    
+    for(e = list_head(sdn_global_table); e != NULL; e = e->next) {
+      if(linkaddr_cmp(&e->node_addr, &addr1)) {
+        e1 = e;
+      }
+      if(linkaddr_cmp(&e->node_addr, &addr2)) {
+        e2 = e;
+      }
+    }
+    
+    if(e1 == NULL || e2 == NULL) {
+      LOG_ERR("NUll hop address! \n");
+      return 0;
+    }
+    
+    /* iterate for cells of each hop */
+    for(k=0; k<config->payload[hop_list_index_end - i]; k++) {           
+
+        int slot_busy = 1;
+        int num_rep = 0;
+        
+        while(slot_busy == 1 && num_rep < 2) {
+          int channel_off;
+          last_ts++;
+          
+          slot_busy = 0;
+          
+          if(slot_busy == 0) {    
+            int m;
+            for(m = 0; m < repetition_num; m++) {     
+              // TODO [mustdo] we should consider this ts is freed recently and can be allocated to a flow its owner: can be used by another flow but not another node in the network. so if KEY is 1 it means ts is freed and not used by another flow of node if 2 means freed but used by nother flow of the node ::: the ts should be busy for both of nodes          
+              if(e1->data_taken_slot[0][(last_ts + (m*req_spec->app_qos.traffic_period))] > -1 &&
+                 e2->data_taken_slot[0][(last_ts + (m*req_spec->app_qos.traffic_period))] > -1) {
+                 // check it is our previous cell and I can use it in reconfiguation 
+                 if(e1->data_taken_slot[2][(last_ts + (m*req_spec->app_qos.traffic_period))] != req_spec->flow_id.u8[0] ||
+                    e2->data_taken_slot[2][(last_ts + (m*req_spec->app_qos.traffic_period))] != req_spec->flow_id.u8[0]) {
+                   slot_busy = 1;
+                   //LOG_INFO("CONTROLLER: TO or FROM taken slot1 %d \n", last_ts);
+                   break;
+                }
+              } else if(e1->data_taken_slot[0][(last_ts + (m*req_spec->app_qos.traffic_period))] > -1 &&
+                 e2->data_taken_slot[0][(last_ts + (m*req_spec->app_qos.traffic_period))] == -1) {
+                 if(e1->data_taken_slot[2][(last_ts + (m*req_spec->app_qos.traffic_period))] != req_spec->flow_id.u8[0]) {
+                   slot_busy = 1;
+                   //LOG_INFO("CONTROLLER: TO or FROM taken slot2 %d \n", last_ts);
+                   break;
+                }
+              
+              } else if(e1->data_taken_slot[0][(last_ts + (m*req_spec->app_qos.traffic_period))] == -1 &&
+                 e2->data_taken_slot[0][(last_ts + (m*req_spec->app_qos.traffic_period))] > -1){
+                  if(e2->data_taken_slot[2][(last_ts + (m*req_spec->app_qos.traffic_period))] != req_spec->flow_id.u8[0]) {
+                   slot_busy = 1;
+                   //LOG_INFO("CONTROLLER: TO or FROM taken slot3 %d \n", last_ts);
+                   break;
+                }
+              }
+            }
+          }
+          if(slot_busy == 0) { 
+          
+            if((e1->data_taken_slot[2][last_ts] == req_spec->flow_id.u8[0] && e2->data_taken_slot[2][last_ts] == req_spec->flow_id.u8[0]) && e1->data_taken_slot[1][last_ts] > -1) {
+              channel_off = e1->data_taken_slot[1][last_ts];
+              LOG_INFO("CONTROLLER: use old slot %d, ch %d \n", last_ts, channel_off);
+              
+            } else if((e1->data_taken_slot[2][last_ts] == req_spec->flow_id.u8[0] && e2->data_taken_slot[2][last_ts] != req_spec->flow_id.u8[0]) && e1->data_taken_slot[1][last_ts] > -1) {
+              channel_off = e1->data_taken_slot[1][last_ts];
+              LOG_INFO("CONTROLLER: use old slot %d, ch %d \n", last_ts, channel_off);
+              
+            } else if((e1->data_taken_slot[2][last_ts] != req_spec->flow_id.u8[0] && e2->data_taken_slot[2][last_ts] == req_spec->flow_id.u8[0]) && e2->data_taken_slot[1][last_ts] > -1) {
+              channel_off = e2->data_taken_slot[1][last_ts];
+              LOG_INFO("CONTROLLER: use old slot %d, ch %d \n", last_ts, channel_off);
+            } else {
+              int ch_ok;
+              if((ch_ok = find_free_channels_for_ts(last_ts, req_spec->app_qos.traffic_period, &channel_off)) == -1) {
+                //LOG_INFO("CONTROLLER: cannot find a free ch_off %d \n", last_ts);
+                slot_busy = 1;
+              }
+            }
+          }
+          
+          if(slot_busy == 0) {
+
+            int m;
+            int mark_as_reconf_cell_addr1 = (e1->data_taken_slot[2][last_ts] == req_spec->flow_id.u8[0]) ? 1 : 0;
+            int mark_as_reconf_cell_addr2 = (e2->data_taken_slot[2][last_ts] == req_spec->flow_id.u8[0]) ? 1 : 0;
+            
+            //revers filling
+            config->payload[schedule_index_end] = channel_off;
+            schedule_index_end--;
+            config->payload[schedule_index_end] = ((last_ts) >>8) & 0xff;
+            schedule_index_end--;
+            config->payload[schedule_index_end] = last_ts & 0xff;
+            schedule_index_end--;
+            
+            
+            for(m = 0; m < repetition_num; m++) {
+              int fail_to_add_cell;
+              
+              fail_to_add_cell = add_slot_to_taken_cell_list(&addr1, req_id->is_ctrl, last_ts + (m*req_spec->app_qos.traffic_period), channel_off, mark_as_reconf_cell_addr1);
+              
+              if(fail_to_add_cell == -1) {
+                LOG_INFO("CONTROLLER: fail to allocate cell: ts %d, ch %d \n", last_ts + (m*req_spec->app_qos.traffic_period), channel_off);
+              }
+              
+              fail_to_add_cell = add_slot_to_taken_cell_list(&addr2, req_id->is_ctrl, last_ts + (m*req_spec->app_qos.traffic_period), channel_off, mark_as_reconf_cell_addr2);
+              
+              if(fail_to_add_cell == -1) {
+                LOG_INFO("CONTROLLER: fail to allocate cell: ts %d, ch %d \n", last_ts + (m*req_spec->app_qos.traffic_period), channel_off);
+              }
+              
+              add_slot_to_global_ts_list(last_ts + (m*req_spec->app_qos.traffic_period), channel_off);
+
+              //LOG_INFO("CONTROLLER: slot %d is free \n", last_ts + (m*req_spec->app_qos.traffic_period));
+            }
+          }  
+        
+          if((last_ts % SDN_SF_REP_PERIOD) == (SDN_SF_REP_PERIOD - 1) && (req_spec->app_qos.traffic_period - 1) == last_ts) {
+              
+              LOG_INFO("CONTROLLER: warning: not enough resource to allocate: last-ts %d \n", last_ts);
+             // return -1;
+              
+              last_ts = SDN_CONTROL_SLOTFRAME_SIZE;
+              num_rep++;
+              LOG_INFO("CONTROLLER: warning: not enough resource to allocate: num_rep %d \n", num_rep);
+              //num_rep++;
+          } else if((last_ts % SDN_SF_REP_PERIOD) == (SDN_SF_REP_PERIOD - 1)) {
+              last_ts = last_ts + SDN_CONTROL_SLOTFRAME_SIZE + 1;
+          }
+      }
+    }  
+  }
+  return 1; 
+
+}
+/*---------------------------------------------------------------------------*/
+int 
 add_schedule_to_config(struct sdn_packet *config, struct rsrc_spec_of_config *req_spec, struct request_id *req_id)
 {
   if(config == NULL || req_spec == NULL || req_id == NULL) {
@@ -1403,7 +1620,11 @@ add_schedule_to_config(struct sdn_packet *config, struct rsrc_spec_of_config *re
     if(req_spec->revers_sch == 0 && req_spec->first_cell_up > -1) {
       last_ts = req_spec->first_cell_up;
     } else if(req_spec->revers_sch == 1 && req_spec->first_cell_down > -1) {
-      last_ts = req_spec->first_cell_down;
+      int add_sch;
+      if((add_sch = add_revers_schedule_to_config(config, req_spec, req_id)) == 1) {
+        LOG_INFO("CONTROLLER: successful revers conf \n");
+        return 1;
+      }
     } else {
       last_ts = req_spec->app_qos.traffic_period;
     }
@@ -1656,6 +1877,7 @@ request_confing_packet(struct request_id *req_id, struct rsrc_spec_of_config *re
     if(p != NULL) {
       set_timer_to_config_packet(p);
       memcpy(&p->req_id, req_id, sizeof(struct request_id));
+      memcpy(&p->req_spec, req_spec, sizeof(struct rsrc_spec_of_config));
       return &p->packet_info;
     }
   } else{
@@ -2363,7 +2585,7 @@ sdn_send_packet_to_controller(const uint8_t *buf, uint16_t len, const linkaddr_t
  }
 }
 /*---------------------------------------------------------------------------*/
-/* find common ancestor for a node on old and new paths */
+/* find common ancestor for a node on (old vs. new) paths */
 linkaddr_t * 
 get_common_parent(struct sdn_packet_info *config, const linkaddr_t *node)
 {
@@ -2375,11 +2597,11 @@ get_common_parent(struct sdn_packet_info *config, const linkaddr_t *node)
   int i,j,k;
   static linkaddr_t tmp_addr;
   static linkaddr_t tmp_ca;
-  int counter = CONF_LIST_OF_NODE_IN_PATH_INDEX;
   
   linkaddr_copy(addr_ca, get_parent_from_node_addr(node));
 
   for(k=0; k<50; k++) {
+    int counter = CONF_LIST_OF_NODE_IN_PATH_INDEX;
     for(i=0; i<config->packet.payload[CONF_NUM_SOURCE_ROUTING_NODE_INDEX]; i++) {
     
       for(j = 0; j< LINKADDR_SIZE; ++j) {
@@ -2399,11 +2621,60 @@ get_common_parent(struct sdn_packet_info *config, const linkaddr_t *node)
   return NULL;
 }
 /*---------------------------------------------------------------------------*/
+/* get list of sub-tree */
+void
+get_list_of_subtree(const linkaddr_t *node)
+{
+  struct sdn_global_table_entry *e1;
+  struct sdn_global_table_entry *e2;
+  linkaddr_t tmp_parent;
+  linkaddr_t tmp_addr;
+  int i;
+  int list_index = 0;
+  
+  if(node == NULL) {
+    return;
+  }
+  
+  for(i=0; i<MAX_SUBTREE; i++) {
+    linkaddr_copy(&subtree_list[i].addr, &linkaddr_null);
+  }
+  
+  
+  for(e1= list_head(sdn_global_table); e1 != NULL; e1 = e1->next) { 
+    if(e1 != NULL) {
+    
+      linkaddr_copy(&tmp_parent, &e1->parent_addr);
+      
+      for(i=0; i<50; i++) {
+        if(linkaddr_cmp(&tmp_parent, node)) {
+          linkaddr_copy(&subtree_list[list_index].addr, &e1->node_addr);
+          list_index++;
+          break;
+        }
+        if(linkaddr_cmp(&tmp_parent, &sink_address)) {
+          break;
+        }
+        
+        linkaddr_copy(&tmp_addr, &tmp_parent);
+        for(e2= list_head(sdn_global_table); e2 != NULL; e2 = e2->next) {
+          if(linkaddr_cmp(&e2->node_addr, &tmp_addr)) {
+            linkaddr_copy(&tmp_parent, &e2->parent_addr);
+            break;
+          }
+        }
+        
+      }
+    }
+
+  }
+}
+/*---------------------------------------------------------------------------*/
 int 
 reconfigure_network(struct sdn_packet* p, struct request_id *req_id)
 {  
   struct sdn_packet_info *new_conf = NULL;
-  //int i;
+  int i;
   //linkaddr_t addr_ca; //common ancestor (ca)
   linkaddr_t *addr_ca = NULL;
   struct sent_config_info *e;
@@ -2494,12 +2765,17 @@ reconfigure_network(struct sdn_packet* p, struct request_id *req_id)
     req_spec->sf_id = 0;
     req_spec->num_ts = 1;
     req_spec->ch_off = 0;
+    req_spec->revers_sch = 0; 
+    req_spec->first_cell_up = -1;   
+    req_spec->first_cell_down = -1;
+    
     linkaddr_copy(&req_spec->flow_id, &last_flow_id); // TODO should find last flow-id of each request
+    req_spec->flow_id.u8[0] = 12;
     linkaddr_copy(&req_spec->src_addr, &req_id->req_sender);
-    int j;
-    for(j = 0; j< LINKADDR_SIZE; ++j) {
-      req_spec->dest_addr.u8[j] = j;
-    }
+    //int j;
+    //for(j = 0; j< LINKADDR_SIZE; ++j) {
+    //  req_spec->dest_addr.u8[j] = j;
+    //}
     req_spec->app_qos.traffic_period = 502;
     req_spec->app_qos.reliability = 99;
     
@@ -2511,10 +2787,14 @@ reconfigure_network(struct sdn_packet* p, struct request_id *req_id)
         } else {
           LOG_ERR("no common ancestor found \n");
       }
-      /* *** */
       
-      new_conf = request_confing_packet(req_id, req_spec);
+      /* update dest addr */
+      linkaddr_copy(&req_spec->dest_addr, addr_ca);
       
+      int ok;
+      if((ok = extract_first_txcell_of_hop(&e->packet_info, req_id, req_spec, addr_ca)) > -1) {
+        new_conf = request_confing_packet(req_id, req_spec);
+      }
       //if(!linkaddr_cmp(addr_ca, &sink_addr)) {
         
       //}
@@ -2522,13 +2802,77 @@ reconfigure_network(struct sdn_packet* p, struct request_id *req_id)
       if(new_conf != NULL) {
       
         insert_old_schedule_in_config(new_conf, req_id, req_spec);
-   /*     
+       
         LOG_INFO("created reconf-req len %u\n", new_conf->len);
         for (i=0; i<new_conf->len -1; i++) {
           LOG_INFO("created reconfig-req %u\n", new_conf->packet.payload[i]);
         }
-   */
-        //sdn_handle_config_packet(&new_conf->packet, new_conf->len, &linkaddr_null);
+   
+        sdn_handle_config_packet(&new_conf->packet, new_conf->len, &linkaddr_null);
+        
+        
+        
+        //TODO we should ckeck the node itself is configured well? the change its subtree
+        /** check the list of the nodes in the subtree to redirec their flows **/
+        /*
+        get_list_of_subtree(&e->req_id.req_sender);
+        int j;
+        struct sent_config_info *ee;
+        
+        for(j=0; j<MAX_SUBTREE; j++) {
+          if(!linkaddr_cmp(&subtree_list[j].addr, &linkaddr_null)) {
+            //update req_id
+            //req_id->num_reconf = 2;              //TODO should be updated based on the previous snet config packet automatically
+            req_id->is_ctrl = 0;
+            linkaddr_cmp(&req_id->req_sender, &subtree_list[j].addr)
+            
+            for(ee = list_head(sent_config_list); ee != NULL; ee = ee->next) { 
+              if(linkaddr_cmp(&ee->req_id.req_sender, &req_id->req_sender) && ee->req_id.is_ctrl == req_id->is_ctrl) {
+                req_id->num_reconf = ee->req_id.num_reconf + 1;
+                req_id->req_num = ee->req_id.req_num;
+                break;
+              }
+            }
+            
+            if(ee != NULL) {
+              // update req_spec
+              req_spec->sf_id = 0;
+              req_spec->num_ts = 1;
+              req_spec->ch_off = 0;
+              req_spec->revers_sch = 1; 
+              req_spec->first_cell_up = -1;   
+              req_spec->first_cell_down = -1;
+              req_spec->app_qos.traffic_period = 502;
+              req_spec->app_qos.reliability = 99;
+              linkaddr_copy(&req_spec->flow_id, &ee->req_spec->flow_id); // TODO should find last flow-id of each request
+              linkaddr_copy(&req_spec->src_addr, &e->req_id.req_sender); // broken node
+              linkaddr_copy(&req_spec->dest_addr, addr_ca);              // CA node
+            
+              free_old_cells(&ee->packet_info, addr_ca, &e->req_id.req_sender, &req_spec->flow_id);
+             
+              if((ok = extract_last_rxcell_of_hop(&ee->packet_info, req_id, req_spec, &e->req_id.req_sender)) > -1) {
+                new_conf = request_confing_packet(req_id, req_spec);
+              }
+              
+              //check condition of back-to-back
+              
+              if(new_conf != NULL)
+                insert_old_schedule_in_config(new_conf, req_id, req_spec);
+       
+                LOG_INFO("created reconf-req len %u\n", new_conf->len);
+                for (i=0; i<new_conf->len -1; i++) {
+                  LOG_INFO("created reconfig-req %u\n", new_conf->packet.payload[i]);
+                }
+   
+                sdn_handle_config_packet(&new_conf->packet, new_conf->len, &linkaddr_null);
+              }
+            }
+            
+            // update req_spec
+            
+          }
+        }
+        */
       }
     }      
   }
@@ -2547,6 +2891,164 @@ reconfigure_network(struct sdn_packet* p, struct request_id *req_id)
   
   
   return 1;
+}
+/*---------------------------------------------------------------------------*/
+/* extract first tx-cell of next hop,
+   it is used to schedule lower hand cells previous this cell 
+*/
+int
+extract_first_txcell_of_hop(struct sdn_packet_info *config, struct request_id *req_id, struct rsrc_spec_of_config *req_spec, const linkaddr_t *node)
+{
+  linkaddr_t my_addr1;
+  linkaddr_t my_addr2;
+  int i, j;
+  
+  int counter = CONF_LIST_OF_NODE_IN_PATH_INDEX;
+  int hop_list_index = (config->packet.payload[CONF_NUM_SOURCE_ROUTING_NODE_INDEX] * LINKADDR_SIZE) + CONF_LIST_OF_NODE_IN_PATH_INDEX; // 1: since index has initial value starting from 1
+    
+  int schedule_index = hop_list_index + config->packet.payload[CONF_NUM_SOURCE_ROUTING_NODE_INDEX] + 2; // 2 = fid len
+      
+
+  /* specify install cell index */
+  int x;
+  int sum_lapsed_cell_uninstall = 0;
+  for(x=0; x < config->packet.payload[CONF_NUM_SOURCE_ROUTING_NODE_INDEX] - 1; x++) {
+    sum_lapsed_cell_uninstall = ((config->packet.payload[hop_list_index + x] & 0xf0) >> 4) + sum_lapsed_cell_uninstall;
+  }
+  int install_cell_index = schedule_index + (sum_lapsed_cell_uninstall * CONFIG_CELL_SIZE);
+  schedule_index = install_cell_index;
+  int num_lapsed_install_cell = 0;
+
+
+
+
+  // init add2
+  for(j = 0; j< LINKADDR_SIZE; ++j) {
+    my_addr2.u8[j] = config->packet.payload[counter];
+    counter++;
+  }
+    
+  // loop over hops on old config
+  for(i=0; i<config->packet.payload[CONF_NUM_SOURCE_ROUTING_NODE_INDEX]; i++) {
+    
+    /* find start of searching list */
+    if(linkaddr_cmp(&my_addr2, node)) {
+      if(i == 0) {
+        req_spec->first_cell_up = req_spec->app_qos.traffic_period;
+        LOG_INFO(" first_cell_up found1: %d\n", req_spec->first_cell_up);
+        return 1;
+      }
+      
+      int k, ts;
+      
+      for(k = 0; k < (config->packet.payload[hop_list_index + (i - 1)] & 0xf); k++) { 
+      
+        ts = config->packet.payload[schedule_index + 1];
+        ts = (ts << 8) + config->packet.payload[schedule_index];
+        schedule_index++;
+        schedule_index++;
+        schedule_index++;
+        
+        if(k == (config->packet.payload[hop_list_index + (i - 1)] & 0xf) - 1) {
+          req_spec->first_cell_up = ts;
+          LOG_INFO(" first_cell_up found2: %d\n", req_spec->first_cell_up);
+          return 1;
+        }
+      }
+    }
+    
+    /* copy my_addr2 to my_addr1 */
+    linkaddr_copy(&my_addr1, &my_addr2);
+    
+    /* fill my_addr2 */
+    for(j = 0; j< LINKADDR_SIZE; ++j) {
+      my_addr2.u8[j] = config->packet.payload[counter];
+      counter++;
+    }
+    
+    if(i > 0) {
+      num_lapsed_install_cell = (config->packet.payload[hop_list_index + (i - 1)] & 0xf) + num_lapsed_install_cell;
+      schedule_index = install_cell_index + (num_lapsed_install_cell * CONFIG_CELL_SIZE);
+    }
+    
+  }
+  return -1;
+}
+/*---------------------------------------------------------------------------*/
+/* extract last rx-cell of previous hop,
+   it is used to schedule upper hand cells after this cell 
+   the node must be a middle node in the list of source routing
+*/
+int
+extract_last_rxcell_of_hop(struct sdn_packet_info *config, struct request_id *req_id, struct rsrc_spec_of_config *req_spec, const linkaddr_t *node)
+{
+  linkaddr_t my_addr1;
+  linkaddr_t my_addr2;
+  int i, j;
+  
+  int counter = CONF_LIST_OF_NODE_IN_PATH_INDEX;
+  int hop_list_index = (config->packet.payload[CONF_NUM_SOURCE_ROUTING_NODE_INDEX] * LINKADDR_SIZE) + CONF_LIST_OF_NODE_IN_PATH_INDEX; // 1: since index has initial value starting from 1
+    
+  int schedule_index = hop_list_index + config->packet.payload[CONF_NUM_SOURCE_ROUTING_NODE_INDEX] + 2; // 2 = fid len
+      
+
+  /* specify install cell index */
+  int x;
+  int sum_lapsed_cell_uninstall = 0;
+  for(x=0; x < config->packet.payload[CONF_NUM_SOURCE_ROUTING_NODE_INDEX] - 1; x++) {
+    sum_lapsed_cell_uninstall = ((config->packet.payload[hop_list_index + x] & 0xf0) >> 4) + sum_lapsed_cell_uninstall;
+  }
+  int install_cell_index = schedule_index + (sum_lapsed_cell_uninstall * CONFIG_CELL_SIZE);
+  schedule_index = install_cell_index;
+  int num_lapsed_install_cell = 0;
+
+
+
+
+  // init add2
+  for(j = 0; j< LINKADDR_SIZE; ++j) {
+    my_addr2.u8[j] = config->packet.payload[counter];
+    counter++;
+  }
+    
+  // loop over hops on old config
+  for(i=0; i<config->packet.payload[CONF_NUM_SOURCE_ROUTING_NODE_INDEX] - 1; i++) {
+    
+    
+    /* copy my_addr2 to my_addr1 */
+    linkaddr_copy(&my_addr1, &my_addr2);
+    
+    /* fill my_addr2 */
+    for(j = 0; j< LINKADDR_SIZE; ++j) {
+      my_addr2.u8[j] = config->packet.payload[counter];
+      counter++;
+    }
+    
+    /* find start of searching list */
+    if(linkaddr_cmp(&my_addr1, node)) {
+      int k, ts;
+      
+      for(k = 0; k < (config->packet.payload[hop_list_index + i] & 0xf); k++) { 
+      
+        ts = config->packet.payload[schedule_index + 1];
+        ts = (ts << 8) + config->packet.payload[schedule_index];
+        schedule_index++;
+        schedule_index++;
+        schedule_index++;
+        
+        if(k == 0) {
+          req_spec->first_cell_down = ts;
+          LOG_INFO(" first_cell_down found: %d\n", req_spec->first_cell_down);
+          return 1;
+        }
+      }
+    }
+    
+    num_lapsed_install_cell = (config->packet.payload[hop_list_index + i] & 0xf) + num_lapsed_install_cell;
+    schedule_index = install_cell_index + (num_lapsed_install_cell * CONFIG_CELL_SIZE);
+    
+  }
+  return -1;
 }
 /*---------------------------------------------------------------------------*/
 /* free list of cells that already configured: we want to use them again in reconfiguration 
@@ -2721,7 +3223,7 @@ insert_old_schedule_in_config(struct sdn_packet_info *new_conf, struct request_i
         counter++;
       }
       
-      /* node is up */
+      /* nodes is upper than CA */
       int num_uinstall_cell = 0;
       if(addr1_index < ca_index_in_sr_list && ((new_conf->packet.payload[hop_list_index_new + addr1_index]) & 0xf) > 0) {
         if((num_uinstall_cell = get_cell_list_for_hop(&addr1, &addr2, &e->packet_info)) > 0) {

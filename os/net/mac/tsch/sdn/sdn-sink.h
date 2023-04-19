@@ -85,6 +85,13 @@ struct conf_main_cell_list {
   int cell_list[SDN_MAX_PACKET_LEN];
   int len;
 };
+
+/* to create list of sub-tree */
+struct subtree {
+  linkaddr_t addr;
+};
+
+
 /*---------------------------------------------------------------------------*/
 void sdn_send_packet_to_controller(const uint8_t *buf, uint16_t len, const linkaddr_t *flow_id);
 

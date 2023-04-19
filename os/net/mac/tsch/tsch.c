@@ -1460,7 +1460,7 @@ PROCESS_THREAD(sdn_report_process, ev, data)
 	        report_size = report_size + 1;
               }
               
-              if(linkaddr_node_addr.u8[1] == 4 && addr->u8[1] == 6 && report_seq == 8) {
+              if(linkaddr_node_addr.u8[1] == 4 && (addr->u8[1] == 6 || addr->u8[1] == 7) && report_seq == 8) {
                 report->payload[report_size] = 2;
                 report_size = report_size +1;
               } else {

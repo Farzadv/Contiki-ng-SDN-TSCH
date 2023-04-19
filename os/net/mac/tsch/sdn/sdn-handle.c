@@ -500,7 +500,7 @@ sdn_handle_config_packet(struct sdn_packet *p, uint16_t len, const linkaddr_t *s
           tsch_schedule_remove_link_by_timeslot(sf, link.slot + (m * repe_period), link.channel_offset);
           
           /* remove flow-id from the flow table */
-          sdn_remove_flow_entry(&link.flow_id, link.sf, link.slot + (m * repe_period), link.channel_offset, 0);  // set priority to 0
+          //sdn_remove_flow_entry(&link.flow_id, link.sf, link.slot + (m * repe_period), link.channel_offset, 0);  // set priority to 0
 	                       
         }
       
@@ -590,7 +590,7 @@ sdn_handle_config_packet(struct sdn_packet *p, uint16_t len, const linkaddr_t *s
           tsch_schedule_remove_link_by_timeslot(sf, link.slot + (m * repe_period), link.channel_offset);
           
           /* remove flow-id from the flow table */
-          sdn_remove_flow_entry(&link.flow_id, link.sf, link.slot + (m * repe_period), link.channel_offset, 0);  // set priority to 0
+          //sdn_remove_flow_entry(&link.flow_id, link.sf, link.slot + (m * repe_period), link.channel_offset, 0);  // set priority to 0
 	                       
         }
         
