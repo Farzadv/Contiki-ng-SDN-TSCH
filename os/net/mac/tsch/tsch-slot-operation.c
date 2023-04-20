@@ -921,7 +921,7 @@ PT_THREAD(tsch_tx_slot(struct pt *pt, struct rtimer *t))
         log->tx.seqno = queuebuf_attr(current_packet->qb, PACKETBUF_ATTR_MAC_SEQNO);
     );
 #endif    
-    
+/*    
 #if SDN_ENABLE
     current_link->cell_used_count++;
     current_link->total_cell_used_count++;
@@ -948,7 +948,7 @@ PT_THREAD(tsch_tx_slot(struct pt *pt, struct rtimer *t))
                                                    queuebuf_attr(current_packet->qb, PACKETBUF_ATTR_APP_SEQNO), mac_tx_status));
     }
 #endif
-
+*/
     /* Poll process for later processing of packet sent events and logs */
     process_poll(&tsch_pending_events_process);
   }

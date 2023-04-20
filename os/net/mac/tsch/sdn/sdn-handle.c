@@ -910,15 +910,15 @@ sdn_input_packet_statistic(const linkaddr_t *flow_id)
   }
   
   if(!linkaddr_cmp(&flow_id_best_effort, flow_id)) {       
-    int i; 
+    //int i; 
     uint8_t p[127];
-    int p_index = packetbuf_datalen() - 4;  // subtract ASN part from end of packet
-    uint16_t app_seqno;
-    linkaddr_t app_src;
-    linkaddr_t app_dest;
+    //int p_index = packetbuf_datalen() - 4;  // subtract ASN part from end of packet
+    //uint16_t app_seqno;
+    //linkaddr_t app_src;
+    //linkaddr_t app_dest;
 
-    const linkaddr_t *mac_src = packetbuf_addr(PACKETBUF_ADDR_SENDER);
-    const linkaddr_t *mac_dest = packetbuf_addr(PACKETBUF_ADDR_RECEIVER);
+    //const linkaddr_t *mac_src = packetbuf_addr(PACKETBUF_ADDR_SENDER);
+    //const linkaddr_t *mac_dest = packetbuf_addr(PACKETBUF_ADDR_RECEIVER);
         
     memcpy((uint8_t *)&p, packetbuf_dataptr(), packetbuf_datalen());
              
@@ -929,16 +929,16 @@ sdn_input_packet_statistic(const linkaddr_t *flow_id)
     }*/
         
     //index of app seq num
-    p_index = p_index-2;           
-    app_seqno = (uint8_t)p[p_index] |
-                  (uint8_t)p[p_index+1]<<8;
+    //p_index = p_index-2;           
+    //app_seqno = (uint8_t)p[p_index] |
+     //             (uint8_t)p[p_index+1]<<8;
         
-    //app dest addr
+ /*   //app dest addr
     p_index = p_index - LINKADDR_SIZE;
         
-    for(i = 0; i< LINKADDR_SIZE; ++i){
-      app_dest.u8[i] = (uint8_t)p[p_index + i];
-    }
+    //for(i = 0; i< LINKADDR_SIZE; ++i){
+    //  app_dest.u8[i] = (uint8_t)p[p_index + i];
+   // }
         
     //app src addr
     p_index = p_index - LINKADDR_SIZE;
@@ -946,10 +946,10 @@ sdn_input_packet_statistic(const linkaddr_t *flow_id)
     for(i = 0; i< LINKADDR_SIZE; ++i){
       app_src.u8[i] = (uint8_t)p[p_index + i];
     }
-        
-    LOG_WARN("!!RX!! |t%d%d|r%d%d|f%d%d|s%d%d|d%d%d|n%d|j\n", mac_src->u8[0], mac_src->u8[1], mac_dest->u8[0], mac_dest->u8[1],
-                                                              flow_id->u8[0], flow_id->u8[1], app_src.u8[0], app_src.u8[1], 
-                                                              app_dest.u8[0], app_dest.u8[1], app_seqno);
+ */       
+    //LOG_WARN("!!RX!! |t%d%d|r%d%d|f%d%d|s%d%d|d%d%d|n%d|j\n", mac_src->u8[0], mac_src->u8[1], mac_dest->u8[0], mac_dest->u8[1],
+    //                                                          flow_id->u8[0], flow_id->u8[1], app_src.u8[0], app_src.u8[1], 
+     //                                                         app_dest.u8[0], app_dest.u8[1], app_seqno);
   }
 }
 /*---------------------------------------------------------------------------*/

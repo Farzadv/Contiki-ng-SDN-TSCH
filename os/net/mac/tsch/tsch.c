@@ -1440,8 +1440,13 @@ PROCESS_THREAD(sdn_report_process, ev, data)
 	        report->payload[report_size] = addr->u8[j];
 	        report_size = report_size + 1;
               }
+              if(linkaddr_node_addr.u8[1] == 8 && (addr->u8[1] == 6 || addr->u8[1] == 7 || addr->u8[1] == 5)) {
+                report->payload[report_size] = 2;
+                report_size = report_size +1;
+              } else {
               report->payload[report_size] = (int)ceil((((float)stat->ratio / 100) * exp_eb_num));
               report_size = report_size +1;
+              }
               
               if(stat->ratio > best_eb_ratio) {
                 best_addr = addr;
@@ -1460,7 +1465,10 @@ PROCESS_THREAD(sdn_report_process, ev, data)
 	        report_size = report_size + 1;
               }
               
-              if(linkaddr_node_addr.u8[1] == 4 && (addr->u8[1] == 6 || addr->u8[1] == 7) && report_seq == 8) {
+              if(linkaddr_node_addr.u8[1] == 8 && (addr->u8[1] == 6 || addr->u8[1] == 7 || addr->u8[1] == 5)) {
+                report->payload[report_size] = 2;
+                report_size = report_size +1;
+              } else if(linkaddr_node_addr.u8[1] == 4 && (addr->u8[1] == 6 || addr->u8[1] == 7 || addr->u8[1] == 8) && report_seq == 10) {
                 report->payload[report_size] = 2;
                 report_size = report_size +1;
               } else {
