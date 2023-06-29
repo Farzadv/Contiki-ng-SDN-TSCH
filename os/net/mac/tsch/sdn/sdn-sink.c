@@ -120,6 +120,7 @@ struct list_of_shared_cell shared_cell;
 struct conf_main_cell_list conf_main_list;
 /*---------------------------------------------------------------------------*/
 PROCESS(conf_handle_process, "conf handle process");
+//PROCESS(reconf_process, "reconf process");
 //AUTOSTART_PROCESSES(&conf_handle_process);
 /*---------------------------------------------------------------------------*/
 #define MAX_CONFIG_TRANSMISSION  4
@@ -951,6 +952,14 @@ allocate_cell_per_hop(const int sink_to_dest_num, const int dest_to_src_num, str
             } else {
               revers_direction_pdr = 0;
             }
+#if SDN_RECONF_MODE
+            if(addr2.u8[1] == 4 && req_spec->flow_id.u8[0] == 14) {
+              revers_direction_pdr = 0.67;
+              LOG_ERR("CONTROLLER: fake change pdr of link 2 -> 4 \n");
+            }
+#endif            
+            
+            
 #if SDN_MDPI_TEST //artificially set link as perfect to check the behavior of MDPI paper
             revers_direction_pdr = 0.999;
 #endif
@@ -1158,8 +1167,8 @@ add_source_routing_info_to_config(struct request_id *req_id, struct rsrc_spec_of
   if(req_id->is_ctrl == 1) {
     config->payload[CONF_REQUEST_NUM_INDEX] = 0;
     is_config_for_novel_node = 1;
-  } else{
-    config->payload[CONF_REQUEST_NUM_INDEX] = req_id->req_num;
+  } else {
+    config->payload[CONF_REQUEST_NUM_INDEX] = (((req_id->num_reconf > 1 ? 1:0) & 0x0f) << 4) + (req_id->req_num & 0x0f);
     is_config_for_novel_node = 0;
   }
   
@@ -1561,15 +1570,15 @@ add_revers_schedule_to_config(struct sdn_packet *config, struct rsrc_spec_of_con
           
             if((e1->data_taken_slot[2][last_ts] == req_spec->flow_id.u8[0] && e2->data_taken_slot[2][last_ts] == req_spec->flow_id.u8[0]) && e1->data_taken_slot[1][last_ts] > -1) {
               channel_off = e1->data_taken_slot[1][last_ts];
-              LOG_INFO("CONTROLLER: use old slot %d, ch %d \n", last_ts, channel_off);
+              //LOG_INFO("CONTROLLER: use old slot %d, ch %d \n", last_ts, channel_off);
               
             } else if((e1->data_taken_slot[2][last_ts] == req_spec->flow_id.u8[0] && e2->data_taken_slot[2][last_ts] != req_spec->flow_id.u8[0]) && e1->data_taken_slot[1][last_ts] > -1) {
               channel_off = e1->data_taken_slot[1][last_ts];
-              LOG_INFO("CONTROLLER: use old slot %d, ch %d \n", last_ts, channel_off);
+              //LOG_INFO("CONTROLLER: use old slot %d, ch %d \n", last_ts, channel_off);
               
             } else if((e1->data_taken_slot[2][last_ts] != req_spec->flow_id.u8[0] && e2->data_taken_slot[2][last_ts] == req_spec->flow_id.u8[0]) && e2->data_taken_slot[1][last_ts] > -1) {
               channel_off = e2->data_taken_slot[1][last_ts];
-              LOG_INFO("CONTROLLER: use old slot %d, ch %d \n", last_ts, channel_off);
+              //LOG_INFO("CONTROLLER: use old slot %d, ch %d \n", last_ts, channel_off);
             } else {
               int ch_ok;
               if((ch_ok = find_free_channels_for_ts(last_ts, req_spec->app_qos.traffic_period, &channel_off)) == -1) {
@@ -2036,7 +2045,7 @@ set_timer_to_config_packet(struct sent_config_info* sent_config)
     if(linkaddr_cmp(&e->node_addr, &sent_config->ack_sender)) {
       e->seq_num = e->seq_num + 1;
       seq_num = e->seq_num;
-      LOG_INFO("CONTROLLER: set timer 1 \n");
+      LOG_INFO("CONTROLLER: set timer, seq-num %d \n", seq_num);
     }
   }
   for(t = list_head(timer_list); t != NULL; t = t->next) { 
@@ -2084,7 +2093,8 @@ handle_config_ack_packet(struct sdn_packet* ack)
     for(e = list_head(sent_config_list); e != NULL; e = e->next) { 
       if(linkaddr_cmp(&e->ack_sender, &ack_sender) && e->seq_num == seq_num) {
         e->is_acked = 1;
-        
+        LOG_INFO("CONTROLLER: config acked: ack sender %d%d, seq-num %d \n", ack_sender.u8[0], ack_sender.u8[1], seq_num);
+        return;
         /* if this is the ack of to-controller config, immediatly send from-controller
            config now */
        /* if(e->req_id.is_ctrl == 1 && e->req_id.req_num == flow_id_to_controller.u8[0]) {
@@ -2094,6 +2104,7 @@ handle_config_ack_packet(struct sdn_packet* ack)
       }
     }
     //print_sent_config_list();
+    LOG_ERR("CONTROLLER: fail config ack: ack sender %d%d, seq-num %d \n", ack_sender.u8[0], ack_sender.u8[1], seq_num);
   }
 }
 /*---------------------------------------------------------------------------*/
@@ -2614,8 +2625,8 @@ sdn_send_packet_to_controller(const uint8_t *buf, uint16_t len, const linkaddr_t
           update reconf num from already sent config
         
         */
-        if(req_id->req_sender.u8[1] == 4 && p->payload[R_REPORT_SEQ_NUM_INDEX] == 10) {
-          reconfigure_network(p, req_id);
+        if(req_id->req_sender.u8[1] == 5 && p->payload[R_REPORT_SEQ_NUM_INDEX] == 11) {
+          //reconfigure_network(p, req_id);
         }
         
       }
@@ -2798,7 +2809,30 @@ reconfigure_network(struct sdn_packet* p, struct request_id *req_id)
 #endif 
          
   }   
-    
+  /* should check the control plane is reconfigured well, then reconfigure data flows */
+  /*
+  process_start(&reconf_process, NULL);
+  PROCESS_THREAD(reconf_process, ev, data)
+  {
+  PROCESS_BEGIN();
+  static struct etimer reconf_timer; 
+  for(e = list_head(sent_config_list); e != NULL; e = e->next) { 
+    if(linkaddr_cmp(&e->req_id.req_sender, &req_id->req_sender) && e->req_id.is_ctrl == 1 && e->req_id.req_num == 3 && e->req_id.num_reconf == 2) {
+      break;
+    }
+  }
+  if(e != NULL) {
+    etimer_set(&reconf_timer, CLOCK_SECOND / 50);
+    while(!e->is_acked) {
+      PROCESS_WAIT_UNTIL(etimer_expired(&reconf_timer));
+      etimer_reset(&reconf_timer);
+    } 
+    LOG_INFO("reconf of control plane is done \n");
+  }
+  
+  PROCESS_END();
+  }   
+   */ 
   //TODO redirect all of the flows sub-tree
   // redirect the data flow:
 
@@ -2822,8 +2856,9 @@ reconfigure_network(struct sdn_packet* p, struct request_id *req_id)
     req_spec->first_cell_up = -1;   
     req_spec->first_cell_down = -1;
     
-    linkaddr_copy(&req_spec->flow_id, &last_flow_id); // TODO should find last flow-id of each request
-    req_spec->flow_id.u8[0] = 12;
+    linkaddr_copy(&req_spec->flow_id, &e->req_spec.flow_id); // TODO should find last flow-id of each request
+    
+    //req_spec->flow_id.u8[0] = 12;
     linkaddr_copy(&req_spec->src_addr, &req_id->req_sender);
     //int j;
     //for(j = 0; j< LINKADDR_SIZE; ++j) {
@@ -2905,9 +2940,9 @@ reconfigure_network(struct sdn_packet* p, struct request_id *req_id)
               req_spec_ch->first_cell_down = -1;
               req_spec_ch->app_qos.traffic_period = 502;
               req_spec_ch->app_qos.reliability = 99;
-              //linkaddr_copy(&req_spec_ch->flow_id, &ee->req_spec.flow_id); // TODO should find last flow-id of each request
-              linkaddr_copy(&req_spec->flow_id, &last_flow_id); // TODO should find last flow-id of each request
-              req_spec->flow_id.u8[0] = 13;
+              linkaddr_copy(&req_spec_ch->flow_id, &ee->req_spec.flow_id); // TODO should find last flow-id of each request
+              //linkaddr_copy(&req_spec->flow_id, &last_flow_id); // TODO should find last flow-id of each request
+              //req_spec->flow_id.u8[0] = 13;
               linkaddr_copy(&req_spec_ch->src_addr, &e->req_id.req_sender); // broken node
               linkaddr_copy(&req_spec_ch->dest_addr, addr_ca);              // CA node
             
@@ -2924,18 +2959,20 @@ reconfigure_network(struct sdn_packet* p, struct request_id *req_id)
               }
               
               if(new_conf != NULL) {
-              
+                printf("I am here 2.60 \n");
                 //check condition of back-to-back
+                int last_old_rx_cell = extract_last_rxcell_of_hop(&ee->packet_info, req_id_ch, req_spec, &e->req_id.req_sender);
                 int last_new_rx_cell = extract_last_rxcell_of_hop(new_conf, req_id_ch, req_spec_ch, addr_ca);
                 int first_old_tx_cell = extract_first_txcell_of_hop(&ee->packet_info, req_id_ch, req_spec_ch, addr_ca);
-                if(last_new_rx_cell < first_old_tx_cell) {
+                if(!(last_new_rx_cell < first_old_tx_cell && last_new_rx_cell > last_old_rx_cell)) {
+                  printf("I am here 2.75 \n");
                   free_old_cells(new_conf, addr_ca, &e->req_id.req_sender, &req_spec_ch->flow_id, 1);
                   //remove config
                   packet_deallocate(&new_conf->packet);
                   
                   struct sent_config_info *e_fail;
                   for(e_fail = list_head(sent_config_list); e_fail != NULL; e_fail = e_fail->next) { 
-                    if(&e_fail->req_id == req_id_ch && &e_fail->req_spec == req_spec_ch) {
+                    if(linkaddr_cmp(&e_fail->req_id.req_sender, &req_id_ch->req_sender) && e_fail->req_id.is_ctrl == req_id_ch->is_ctrl && e_fail->req_id.num_reconf == req_id_ch->num_reconf && e_fail->req_id.req_num == req_id_ch->req_num) {
                       dealloc_mem_sent_config(e_fail);
                       break;
                     }
@@ -2969,7 +3006,6 @@ reconfigure_network(struct sdn_packet* p, struct request_id *req_id)
             
           }
           
-          
           // free memory //
           if(req_id_ch != NULL) {
             free(req_id_ch);
@@ -2979,11 +3015,7 @@ reconfigure_network(struct sdn_packet* p, struct request_id *req_id)
           if(req_spec_ch != NULL) {
             free(req_spec_ch);
           }
-     
         }
-        
-        
-        
       }
     }      
   }
@@ -3348,13 +3380,13 @@ insert_old_schedule_in_config(struct sdn_packet_info *new_conf, struct request_i
       }
       
       /* node1 is ca and node2 is down */
-      else if(linkaddr_cmp(&addr1, &addr_ca) && !linkaddr_cmp(&addr2, &req_id->req_sender)) {
+      else if(linkaddr_cmp(&addr1, &addr_ca) && !linkaddr_cmp(&addr2, &req_spec->src_addr)) {
         if((num_uinstall_cell = get_cell_list_for_hop(&addr1, NULL, &e->packet_info)) > 0) {
           new_conf->packet.payload[hop_list_index_new + addr1_index] = new_conf->packet.payload[hop_list_index_new + addr1_index] + ((num_uinstall_cell << 4) & 0xff);
         }
       }
       
-      else if(linkaddr_cmp(&addr1, &addr_ca) && linkaddr_cmp(&addr2, &req_id->req_sender)) {
+      else if(linkaddr_cmp(&addr1, &addr_ca) && linkaddr_cmp(&addr2, &req_spec->src_addr)) {
         int sum_of_hop = 0;
         if((num_uinstall_cell = get_cell_list_for_hop(&addr1, NULL, &e->packet_info)) > 0) {
           sum_of_hop = num_uinstall_cell;
@@ -3366,14 +3398,14 @@ insert_old_schedule_in_config(struct sdn_packet_info *new_conf, struct request_i
         }
       }      
       
-      else if(!linkaddr_cmp(&addr1, &addr_ca) && linkaddr_cmp(&addr2, &req_id->req_sender)) {
+      else if(!linkaddr_cmp(&addr1, &addr_ca) && linkaddr_cmp(&addr2, &req_spec->src_addr)) {
         if((num_uinstall_cell = get_cell_list_for_hop(NULL, &addr2, &e->packet_info)) > 0) {
           new_conf->packet.payload[hop_list_index_new + addr1_index] = new_conf->packet.payload[hop_list_index_new + addr1_index] + ((num_uinstall_cell << 4) & 0xff);
         }
         printf("reconf test 2: num cell unistall %d\n", num_uinstall_cell);
       }
       
-      else if(linkaddr_cmp(&addr1, &req_id->req_sender)) {
+      else if(linkaddr_cmp(&addr1, &req_spec->src_addr)) {
         if((num_uinstall_cell = get_cell_list_for_hop(&addr1, NULL, &e->packet_info)) > 0) {
           new_conf->packet.payload[hop_list_index_new + addr1_index] = new_conf->packet.payload[hop_list_index_new + addr1_index] + ((num_uinstall_cell << 4) & 0xff);
         }

@@ -141,7 +141,7 @@ const linkaddr_t my_dest =         {{ 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
 const linkaddr_t my_dest =         {{ 0x01, 0x00 }};
 #endif
 */
-/*--------------------------------veisi--------------------------------------*/
+/*--------------------------------veisiii4--------------------------------------*/
 #if SDN_ENABLE
 /* SDN variable init */
 
@@ -152,6 +152,7 @@ int sdn__sf_offset_to_send_eb = -1;
 int sdn__ts_offset_to_send_eb = -1;
 uint16_t sdn_max_used_sf_offs = 0;
 int ready_to_start_report = 0;
+int seq_num_of_target = 0;
 //#if SINK
 //static linkaddr_t src=         {{ 0x02, 0x00 }};
 //#endif
@@ -1440,7 +1441,19 @@ PROCESS_THREAD(sdn_report_process, ev, data)
 	        report->payload[report_size] = addr->u8[j];
 	        report_size = report_size + 1;
               }
-              if(linkaddr_node_addr.u8[1] == 8 && (addr->u8[1] == 6 || addr->u8[1] == 7 || addr->u8[1] == 5)) {
+              if(linkaddr_node_addr.u8[1] == 6 && (addr->u8[1] == 3 || addr->u8[1] == 2 || addr->u8[1] == 4 || addr->u8[1] == 1)) {
+                report->payload[report_size] = 2;
+                report_size = report_size +1;
+              } else if(linkaddr_node_addr.u8[1] == 2 && (addr->u8[1] == 3 || addr->u8[1] == 6 || addr->u8[1] == 4 || addr->u8[1] == 5)) {
+                report->payload[report_size] = 2;
+                report_size = report_size +1;
+              } else if(linkaddr_node_addr.u8[1] == 3 && (addr->u8[1] == 1 || addr->u8[1] == 4 || addr->u8[1] == 6 || addr->u8[1] == 5)) {
+                report->payload[report_size] = 2;
+                report_size = report_size +1;
+              } else if(linkaddr_node_addr.u8[1] == 4 && (addr->u8[1] == 1 || addr->u8[1] == 3 || addr->u8[1] == 6 || addr->u8[1] == 5)) {
+                report->payload[report_size] = 2;
+                report_size = report_size +1;
+              } else if(linkaddr_node_addr.u8[1] == 5 && (addr->u8[1] == 1 || addr->u8[1] == 4 || addr->u8[1] == 6 || addr->u8[1] == 2)) {
                 report->payload[report_size] = 2;
                 report_size = report_size +1;
               } else {
@@ -1465,11 +1478,14 @@ PROCESS_THREAD(sdn_report_process, ev, data)
 	        report_size = report_size + 1;
               }
               
-              if(linkaddr_node_addr.u8[1] == 8 && (addr->u8[1] == 6 || addr->u8[1] == 7 || addr->u8[1] == 5)) {
+              if(linkaddr_node_addr.u8[1] == 6 && (addr->u8[1] == 3 || addr->u8[1] == 2 || addr->u8[1] == 4)) {
                 report->payload[report_size] = 2;
                 report_size = report_size +1;
-              } else if(linkaddr_node_addr.u8[1] == 4 && (addr->u8[1] == 6 || addr->u8[1] == 7 || addr->u8[1] == 8) && report_seq == 10) {
+              } else if(linkaddr_node_addr.u8[1] == 5 && (addr->u8[1] == 3 || addr->u8[1] == 2 || addr->u8[1] == 6) && report_seq == 11) {
                 report->payload[report_size] = 2;
+                report_size = report_size +1;
+              } else if(linkaddr_node_addr.u8[1] == 4 && addr->u8[1] == 2 && report_seq == 11) {
+                report->payload[report_size] = 1;
                 report_size = report_size +1;
               } else {
                 report->payload[report_size] = stat->rx_eb_count;

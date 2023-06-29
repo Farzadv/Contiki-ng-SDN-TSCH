@@ -140,7 +140,8 @@ run command: java -Xshare:on -jar ../../tools/cooja/dist/cooja.jar -nogui=config
 
 /* enable reconf test */
 #define SDN_CONF_RECONF_MODE  1
-
+/* simulate broken link */
+#define ARTIFITIAL_LQ_CHANGE  1
 
 /* SDN LOG Level */
 #define SDN_LOG_LEVEL                  LOG_LEVEL_INFO

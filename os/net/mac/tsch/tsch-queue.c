@@ -272,11 +272,11 @@ tsch_queue_add_packet(const linkaddr_t *addr, uint8_t max_transmissions,
             /* Add to ringbuf (actual add committed through atomic operation) */
             n->tx_array[put_index] = p;
             ringbufindex_put(&n->tx_ringbuf);
-            /*
+           /* 
             LOG_ERR("flow-id: ");
             LOG_ERR_LLADDR(addr);
             LOG_ERR_(" nbr-queue: %u, globl-queue: %u\n", tsch_queue_nbr_packet_count(n), tsch_queue_global_packet_count());
-            */
+           */ 
             LOG_DBG("packet is added put_index %u, packet %p\n",
                    put_index, p);
             return p;

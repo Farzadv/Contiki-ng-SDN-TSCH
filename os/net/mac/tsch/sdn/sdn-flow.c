@@ -69,7 +69,7 @@ sdn_add_flow_enrty(const linkaddr_t *flow_id, int sf_handle, int slot_num, int c
 */
  
     if (sf_handle == e->sf_handle && slot_num == e->slot_num && ch_off == e->ch_off && linkaddr_cmp(&e->flow_id, flow_id) && priority == e->priority){
-      //LOG_INFO("SDN FLOW: flow exists in table \n");
+      LOG_INFO("SDN FLOW: flow exists in table \n");
       return 0;
     }
     if (sf_handle == e->sf_handle && slot_num == e->slot_num && ch_off == e->ch_off && linkaddr_cmp(&e->flow_id, flow_id) && priority != e->priority){
@@ -135,6 +135,10 @@ sdn_remove_flow_entry(const linkaddr_t *flow_id, int sf_handle, int slot_num, in
       return 0;
     }
   }
+  LOG_INFO("SDN FLOW: fail remove flow, sfid %u, slot num %u, ch-off %u, priority %u, flowid ",
+             sf_handle, slot_num, ch_off, priority);
+  LOG_INFO_LLADDR(flow_id);
+  LOG_INFO_("\n");
   return -1;
 }
 /*---------------------------------------------------------------------------*/

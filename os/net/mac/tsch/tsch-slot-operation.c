@@ -47,6 +47,7 @@
 
 #include "dev/radio.h"
 #include "contiki.h"
+#include "random.h"
 #include "net/netstack.h"
 #include "net/packetbuf.h"
 #include "net/queuebuf.h"
@@ -921,7 +922,7 @@ PT_THREAD(tsch_tx_slot(struct pt *pt, struct rtimer *t))
         log->tx.seqno = queuebuf_attr(current_packet->qb, PACKETBUF_ATTR_MAC_SEQNO);
     );
 #endif    
-/*    
+    
 #if SDN_ENABLE
     current_link->cell_used_count++;
     current_link->total_cell_used_count++;
@@ -948,7 +949,7 @@ PT_THREAD(tsch_tx_slot(struct pt *pt, struct rtimer *t))
                                                    queuebuf_attr(current_packet->qb, PACKETBUF_ATTR_APP_SEQNO), mac_tx_status));
     }
 #endif
-*/
+
     /* Poll process for later processing of packet sent events and logs */
     process_poll(&tsch_pending_events_process);
   }
@@ -1042,6 +1043,27 @@ PT_THREAD(tsch_rx_slot(struct pt *pt, struct rtimer *t))
         frame_valid = header_len > 0 &&
           frame802154_check_dest_panid(&frame) &&
           frame802154_extract_linkaddr(&frame, &source_address, &destination_address);
+
+#if ARTIFITIAL_LQ_CHANGE
+        if(seq_num_of_target){
+          //static linkaddr_t my_sender_addr = {{0x00, 0x04}};
+          //static linkaddr_t my_dest_addr = {{0x00, 0x05}};
+          if((source_address.u8[1] == 5 && (destination_address.u8[1] == 3)) || (source_address.u8[1] == 6 && (destination_address.u8[1] == 3))) {  
+            TSCH_LOG_ADD(tsch_log_message,
+                snprintf(log->message, sizeof(log->message),
+                "artif fail1 src %d ,dst %d", source_address.u8[1], destination_address.u8[1]));
+            int r = random_rand() % 100;
+            if(r > 40){
+              frame_valid = 0;
+              TSCH_LOG_ADD(tsch_log_message,
+                snprintf(log->message, sizeof(log->message),
+                "artif fail"));
+            }
+          }
+        }
+#endif
+
+
 
 #if TSCH_RESYNC_WITH_SFD_TIMESTAMPS
         /* At the end of the reception, get an more accurate estimate of SFD arrival time */

@@ -21,6 +21,7 @@ extern int sdn__sf_offset_to_send_eb;
 extern int sdn__ts_offset_to_send_eb;
 extern int ready_to_start_report;
 extern uint16_t sdn_max_used_sf_offs;
+extern int seq_num_of_target; // this is just a variable for getting the statistics
 #if SINK
 extern int sdn_num_shared_cell;
 extern int sdn_num_shared_cell_in_rep;
@@ -63,7 +64,7 @@ struct list_dist_uniform{
 #define CONF_EB_SF_OFFS_INDEX                   0
 #define CONF_EB_TS_OFFS_INDEX                   (CONF_EB_SF_OFFS_INDEX + 2)
 #define CONF_SEQ_NUM_INDEX                      (CONF_EB_TS_OFFS_INDEX + 2)
-#define CONF_REQUEST_NUM_INDEX                  (CONF_SEQ_NUM_INDEX + 1)
+#define CONF_REQUEST_NUM_INDEX                  (CONF_SEQ_NUM_INDEX + 1)    // 4highbit:4lowbit -> 4hb: is reconf? 4lb req num
 #define CONF_REPETION_PERIOD                    (CONF_REQUEST_NUM_INDEX + 1)
 #define CONF_NUM_SOURCE_ROUTING_NODE_INDEX      (CONF_REPETION_PERIOD + 2)
 #define CONF_LIST_OF_NODE_IN_PATH_INDEX         (CONF_NUM_SOURCE_ROUTING_NODE_INDEX + 1)

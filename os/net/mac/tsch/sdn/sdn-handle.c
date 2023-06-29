@@ -24,12 +24,21 @@
 #define LOG_MODULE "SDN"
 #define LOG_LEVEL SDN_HANDLE_LOG_LEVEL
 
-
+void check_seqnum_of_report(struct sdn_packet *p, uint16_t len, const linkaddr_t *src_addr);
 
 /*---------------------------------------------------------------------------*/
 void 
 sdn_handle_config_packet(struct sdn_packet *p, uint16_t len, const linkaddr_t *src_addr)
 {
+  int i;
+  if(linkaddr_node_addr.u8[1] == 7) {
+  LOG_INFO("created reconf-req len %u\n", len);
+  for (i=0; i<len -1; i++) {
+    LOG_INFO("reconf-req: %u\n", p->payload[i]);
+  }
+  }
+
+
   int is_first_node_in_src_route = 0;
   int is_middle_node_in_src_route = 0;
   int is_last_node_in_src_route = 0;
@@ -41,7 +50,7 @@ sdn_handle_config_packet(struct sdn_packet *p, uint16_t len, const linkaddr_t *s
   linkaddr_t next_hop_addr;
   linkaddr_t prvs_hop_addr;
   int counter = CONF_LIST_OF_NODE_IN_PATH_INDEX;
-  int i;
+  //int i;
   uint8_t m;
   int repe_period;
   for(i=0; i<p->payload[CONF_NUM_SOURCE_ROUTING_NODE_INDEX]; i++) {
@@ -297,7 +306,6 @@ sdn_handle_config_packet(struct sdn_packet *p, uint16_t len, const linkaddr_t *s
           
           /* remove flow-id from the flow table */
           sdn_remove_flow_entry(&link.flow_id, link.sf, link.slot + (m * repe_period), link.channel_offset, 0);  // set priority to 0
-        
         }
         
         /* install cells */
@@ -352,8 +360,8 @@ sdn_handle_config_packet(struct sdn_packet *p, uint16_t len, const linkaddr_t *s
         
         }//for
       }
-      if(p->payload[CONF_REQUEST_NUM_INDEX] > 0) {
-        sdn_response_for_flow_id(p->payload[CONF_REQUEST_NUM_INDEX], &link.flow_id, repe_period);
+      if(!((p->payload[CONF_REQUEST_NUM_INDEX] & 0xf0) >> 4) && (p->payload[CONF_REQUEST_NUM_INDEX] & 0x0f) > 0) {
+        sdn_response_for_flow_id(p->payload[CONF_REQUEST_NUM_INDEX] & 0x0f, &link.flow_id, repe_period);
       }
       //tsch_schedule_print();
     }	  
@@ -766,6 +774,11 @@ sdn_control_packet_handle(const uint8_t *buf, uint16_t len, const linkaddr_t *fl
      sdn_handle_config_packet(p, len, packetbuf_addr(PACKETBUF_ADDR_SENDER));
    } else if ((num_entry = sdn_is_flowid_exist_in_table(flow_id)) > 0) {
      LOG_INFO("sdn-handle: middle node received a report packet\n");
+#if ARTIFITIAL_LQ_CHANGE
+     if(linkaddr_node_addr.u8[1] == 3){
+       check_seqnum_of_report(p, len, packetbuf_addr(PACKETBUF_ADDR_SENDER));
+     }
+#endif
      packetbuf_clear();
      packetbuf_copyfrom((uint8_t *)p, len);
      sdn_output(&linkaddr_null, flow_id, 1, NULL);
@@ -777,6 +790,23 @@ sdn_control_packet_handle(const uint8_t *buf, uint16_t len, const linkaddr_t *fl
    LOG_INFO("sdn-handle: normal node received a non valid sdn type\n");
  }
 #endif
+}
+/*---------------------------------------------------------------------------*/
+/* check received report packet from a my target node */
+void 
+check_seqnum_of_report(struct sdn_packet *p, uint16_t len, const linkaddr_t *src_addr)
+{
+  linkaddr_t sender_addr;
+  int j;
+     
+  for(j = 0; j< LINKADDR_SIZE; ++j) {
+    sender_addr.u8[j] = p->payload[R_SENDER_ADDR_INDEX + j];
+  }
+  
+  if(sender_addr.u8[1] == 5 && p->payload[R_REPORT_SEQ_NUM_INDEX] == 11) {
+    printf("find right report packet \n");
+    seq_num_of_target = 1;
+  }
 }
 /*---------------------------------------------------------------------------*/
 void 

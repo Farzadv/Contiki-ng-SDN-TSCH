@@ -6,12 +6,11 @@
   <component name="ChangeListManager">
     <list default="true" id="65937cce-c5e5-425a-b5a3-5f5a84c12ecb" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/../../../arch/cpu/arm/CMSIS" beforeDir="false" afterPath="$PROJECT_DIR$/../../../arch/cpu/arm/CMSIS" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../../../os/net/mac/tsch/sdn/sdn-conf.h" beforeDir="false" afterPath="$PROJECT_DIR$/../../../os/net/mac/tsch/sdn/sdn-conf.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../../../os/net/mac/tsch/sdn/sdn-flow.c" beforeDir="false" afterPath="$PROJECT_DIR$/../../../os/net/mac/tsch/sdn/sdn-flow.c" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/../../../os/net/mac/tsch/sdn/sdn-handle.c" beforeDir="false" afterPath="$PROJECT_DIR$/../../../os/net/mac/tsch/sdn/sdn-handle.c" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/../../../os/net/mac/tsch/sdn/sdn-sink.c" beforeDir="false" afterPath="$PROJECT_DIR$/../../../os/net/mac/tsch/sdn/sdn-sink.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../../../os/net/mac/tsch/sdn/sdn-sink.h" beforeDir="false" afterPath="$PROJECT_DIR$/../../../os/net/mac/tsch/sdn/sdn-sink.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/../../../os/net/mac/tsch/sdn/sdn.h" beforeDir="false" afterPath="$PROJECT_DIR$/../../../os/net/mac/tsch/sdn/sdn.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../../../os/net/mac/tsch/tsch-queue.c" beforeDir="false" afterPath="$PROJECT_DIR$/../../../os/net/mac/tsch/tsch-queue.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../../../os/net/mac/tsch/tsch-schedule.c" beforeDir="false" afterPath="$PROJECT_DIR$/../../../os/net/mac/tsch/tsch-schedule.c" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/../../../os/net/mac/tsch/tsch-slot-operation.c" beforeDir="false" afterPath="$PROJECT_DIR$/../../../os/net/mac/tsch/tsch-slot-operation.c" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/../../../os/net/mac/tsch/tsch.c" beforeDir="false" afterPath="$PROJECT_DIR$/../../../os/net/mac/tsch/tsch.c" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/../../../os/net/security/tinydtls" beforeDir="false" afterPath="$PROJECT_DIR$/../../../os/net/security/tinydtls" afterDir="false" />
