@@ -1,6 +1,0 @@
-       sdn_packet_t* report = NULL;
-	report->typ = REPORT;
-	report->payload[BATT_INDEX] = 00;
-	report->payload[REPORT_SEQ_NUM_INDEX] = 11;
-	report->payload[METRIC_TYP_INDEX] = 22;
-	report->payload[NBR_NUB_INDEX] = 33;

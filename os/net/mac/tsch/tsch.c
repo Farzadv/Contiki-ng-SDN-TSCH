@@ -59,7 +59,7 @@
 #include "net/routing/routing.h"
 #include <math.h>
 
-/* veisi: add .h libs */
+/* veisi: add sdn libraries */
 #if SDN_ENABLE
 #include "net/mac/tsch/sdn/sdn.h"
 #include "net/mac/tsch/sdn/sdn-conf.h"
@@ -102,7 +102,7 @@ NBR_TABLE(struct eb_stat, eb_stats);
 #endif /* TSCH_AUTOSELECT_TIME_SOURCE */
 
 /*--------------------------------veisi--------------------------------------*/
-/* this is the SDN neighbor table */
+/* this is the way we define SDN neighbor table */
 #if SDN_NBR_TABLE
 struct sdn_nbr {
   uint8_t rx_eb_count;
@@ -142,9 +142,8 @@ const linkaddr_t my_dest =         {{ 0x01, 0x00 }};
 #endif
 */
 /*--------------------------------veisi--------------------------------------*/
+/* all the variables I added in tsch.c  */
 #if SDN_ENABLE
-/* SDN variable init */
-
 /* initial SDN extern values */
 int sdn_is_joined = 0;
 int num_from_controller_rx_slots = 0;
@@ -153,17 +152,12 @@ int sdn__ts_offset_to_send_eb = -1;
 uint16_t sdn_max_used_sf_offs = 0;
 int ready_to_start_report = 0;
 int seq_num_of_target = 0;
-//#if SINK
-//static linkaddr_t src=         {{ 0x02, 0x00 }};
-//#endif
 void purge_sdn_nbr_table(void);
-/* I defined the slotframe here to have access everywhere */
-// I defined as an extern sf 
+/* I defined the slotframe as an extern here to have access everywhere */
 struct tsch_slotframe *sf0;
 struct tsch_slotframe *sf1;
-/* veisi: add a flow 0 to schedule */
+/* list of pre-defined flow-ids*/
 const linkaddr_t sink_address =  {{ 0x00, 0x01 }};
-
 const linkaddr_t flow_id_shared_cell =  {{ 0x01, 0x00 }};
 const linkaddr_t flow_id_miss =  {{ 0xff, 0xff }};
 const linkaddr_t flow_id_to_controller = {{ 0x02, 0x00 }};
@@ -221,7 +215,7 @@ PT_THREAD(tsch_scan(struct pt *pt));
 PROCESS(tsch_process, "main process");
 PROCESS(tsch_send_eb_process, "send EB process");
 PROCESS(tsch_pending_events_process, "pending events process");
-/* veisi: add a process for sending report packet */
+/* veisi: add a process for sending SDN report packet */
 #if SDN_ENABLE
 PROCESS(sdn_report_process, "sdn report process");
 #endif
@@ -304,7 +298,7 @@ tsch_reset(void)
   }
 #endif /* TSCH_AUTOSELECT_TIME_SOURCE */
 /*--------------------------------veisi--------------------------------------*/
-/* this is the SDN neighbor table */
+/* reset SDN neighbor table */
 #if SDN_NBR_TABLE
   struct sdn_nbr *stat;
   stat = nbr_table_head(sdn_nbrs);
@@ -328,12 +322,7 @@ static int
 resynchronize(const linkaddr_t *original_time_source_addr)
 {
   const struct tsch_neighbor *current_time_source = tsch_queue_get_time_source();
-//veisi
-//#if SDN_ENABLE
-//  const linkaddr_t *ts_addr = current_time_source->time_source;
-//#else
   const linkaddr_t *ts_addr = tsch_queue_get_nbr_address(current_time_source);
-//#endif
   if(ts_addr != NULL && !linkaddr_cmp(ts_addr, original_time_source_addr)) {
     /* Time source has already been changed (e.g. by RPL). Let's see if it works. */
     LOG_INFO("time source has been changed to ");
@@ -492,11 +481,7 @@ eb_input(struct input_packet *current_input)
     /* Got an EB from a different neighbor than our time source, keep enough data
      * to switch to it in case we lose the link to our time source */
     struct tsch_neighbor *ts = tsch_queue_get_time_source();
-//#if SDN_ENABLE
-  //  linkaddr_t *ts_addr = ts->time_source;
-//#else
     linkaddr_t *ts_addr = tsch_queue_get_nbr_address(ts);
-//#endif
     if(ts_addr == NULL || !linkaddr_cmp((linkaddr_t *)&frame.src_addr, ts_addr)) {
       linkaddr_copy(&last_eb_nbr_addr, (linkaddr_t *)&frame.src_addr);
       last_eb_nbr_jp = eb_ies.ie_join_priority;
