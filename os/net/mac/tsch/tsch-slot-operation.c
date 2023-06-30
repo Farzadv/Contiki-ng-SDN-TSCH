@@ -403,7 +403,7 @@ get_packet_and_neighbor_for_link(struct tsch_link *link, struct tsch_neighbor **
   return p;
 }
 /*---------------------------------------------------------------------------*/
-/* Get EB, broadcast or unicast packet to be sent, and target neighbor. */
+/* we define this func to handle packets based on flow-id than lladdr */
 #if SDN_ENABLE
 static struct tsch_packet *
 get_packet_and_flow_for_link(struct tsch_link *link, struct tsch_neighbor **target_neighbor)
@@ -425,6 +425,8 @@ get_packet_and_flow_for_link(struct tsch_link *link, struct tsch_neighbor **targ
       /* fetch EB packets */
       //uint16_t shts = (uint16_t) (tsch_current_asn.ls4b % 251);
       
+      
+      /* it use scheduled EB TX, each node should used its dedicated cell to send EB */
 #if SDN_UNCONTROLLED_EB_SENDING
         n = n_eb;
         p = tsch_queue_get_packet_for_nbr(n, link);
@@ -467,10 +469,6 @@ get_packet_and_flow_for_link(struct tsch_link *link, struct tsch_neighbor **targ
       /* NORMAL link or no EB to send, pick a data packet */
       if(p == NULL) {
         /* Get neighbor queue associated to the link and get packet from it */
-        //TODO here I must check if there is no packet for this flow id, search again over flow table to find 
-        // another flow id for this given timeslot and sf. search for entry with lower priority
-        //if there is no flow id anymore, check for sending keepalive packet
-
         flow_id = sdn_find_flow_id(link->slotframe_handle, link->timeslot);
 
         if (flow_id != NULL){
@@ -494,9 +492,9 @@ get_packet_and_flow_for_link(struct tsch_link *link, struct tsch_neighbor **targ
                 "shared sf offs: %d, ts: %d", curr_slotframe_offset, link->timeslot));
         }
         */
-        //TODO if link is not shared and link->addr is not broadcast, I muat change the dest address of packet and set it to link->addr
+        //TODO if link is not shared and link->addr is not broadcast, I must change the dest address of packet and set it to link->addr
         // POINT: just report of non-joined nodes and config of befor-last-nodes must be set to the dest address. because 
-        // they are sent over shared slots and for shared slot we doesnot change the dest addr of the packet (in queue of shared-cell-flow-id)
+        // they are sent over shared slots and for shared slot we does not change the dest addr of the packet (in queue of shared-cell-flow-id)
 
 
         /* send a keepalive packet, if there is no packet for this timeslot */

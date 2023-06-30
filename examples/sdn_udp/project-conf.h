@@ -87,7 +87,6 @@
 #define TSCH_PACKET_CONF_EACK_WITH_SRC_ADDR 1
 #define LINKADDR_CONF_SIZE 2
 
-// Not sure why I add these 2 lines?
 //#define QUEUEBUF_CONF_NUM                  128
 #if SINK
 #define TSCH_QUEUE_CONF_NUM_PER_NEIGHBOR     32
@@ -135,13 +134,10 @@ run command: java -Xshare:on -jar ../../tools/cooja/dist/cooja.jar -nogui=config
 #define SDN_MDPI_TEST    0
 
 
-
-
-
 /* enable reconf test */
-#define SDN_CONF_RECONF_MODE  1
+#define SDN_CONF_RECONF_MODE  0
 /* simulate broken link */
-#define ARTIFITIAL_LQ_CHANGE  1
+#define ARTIFITIAL_LQ_CHANGE  0
 
 /* SDN LOG Level */
 #define SDN_LOG_LEVEL                  LOG_LEVEL_INFO

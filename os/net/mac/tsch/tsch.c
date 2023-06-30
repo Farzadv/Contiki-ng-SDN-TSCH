@@ -521,7 +521,7 @@ eb_input(struct input_packet *current_input)
 #endif /* TSCH_AUTOSELECT_TIME_SOURCE */
 
 /*--------------------------------veisi--------------------------------------*/
-/* Fill SDN neighbor table */
+/* Fill SDN neighbor table in the Discovery phase: it matters at bootstrapping the network  */
 #if SDN_NBR_TABLE
   int is_first_nbr_seen = 0;
   struct sdn_nbr *stat = (struct sdn_nbr *)nbr_table_get_from_lladdr(sdn_nbrs, (linkaddr_t *)&frame.src_addr);
@@ -537,14 +537,14 @@ eb_input(struct input_packet *current_input)
       stat->first_asn = tsch_current_asn;
       stat->ratio = 100;
     } else {
-      int vali = ((int)(TSCH_ASN_DIFF(tsch_current_asn, stat->first_asn) / (TSCH_EB_PERIOD/10)) + 1);
-      if(vali > 0) {
-        stat->ratio = (int)((float)((float)stat->rx_eb_count / (float)vali) * 100);
+      int valid_time = ((int)(TSCH_ASN_DIFF(tsch_current_asn, stat->first_asn) / (TSCH_EB_PERIOD/10)) + 1);
+      if(valid_time > 0) {
+        stat->ratio = (int)((float)((float)stat->rx_eb_count / (float)valid_time) * 100);
       } else {
-        LOG_WARN("vali is wrong !\n");
+        LOG_WARN("valid_time is wrong !\n");
         stat->ratio = 0;
       }
-      //printf("receive an EB, curr ratio: %d, eb num: %d, vali: %d\n", stat->ratio, stat->rx_eb_count, vali);
+      //printf("receive an EB, curr ratio: %d, eb num: %d, valid_time: %d\n", stat->ratio, stat->rx_eb_count, valid_time);
     }
   }
   
@@ -560,12 +560,12 @@ eb_input(struct input_packet *current_input)
       //printf(" RSSI: %d with EB number: %d \n", stat->rssi, stat->rx_eb_count);
       
       /* update ratio of all NBRs when receiving a new EB */
-      int vali = ((int)(TSCH_ASN_DIFF(tsch_current_asn, stat->first_asn) / (TSCH_EB_PERIOD/10)) + 1);
-      if(vali > 0) {
-        stat->ratio = (int)((float)((float)stat->rx_eb_count / (float)vali) * 100);
+      int valid_time = ((int)(TSCH_ASN_DIFF(tsch_current_asn, stat->first_asn) / (TSCH_EB_PERIOD/10)) + 1);
+      if(valid_time > 0) {
+        stat->ratio = (int)((float)((float)stat->rx_eb_count / (float)valid_time) * 100);
       }
     
-      if(stat->ratio > (int)(SDN_TRSHLD_BETS_NBRS * 100) && !do_not_check) {
+      if(stat->ratio > (int)(SDN_TRSHLD_START_DISCOVERY * 100) && !do_not_check) {
         if(TSCH_ASN_DIFF(tsch_current_asn, stat->first_asn) >= (SDN_REPORT_PERIOD * 100)) {
           is_time_start_report = 1;
         } else {
@@ -584,10 +584,10 @@ eb_input(struct input_packet *current_input)
       stat = nbr_table_next(sdn_nbrs, stat);
     }
     
-  
+    /* enable this flag to start the SDN reporting process */
     if(is_time_start_report) {
       ready_to_start_report = 1;
-      printf("ready to start report: %d\n", SDN_REPORT_PERIOD * 100);
+      LOG_INFO("ready to start report: %d\n", SDN_REPORT_PERIOD * 100);
     }
   }
   
@@ -611,6 +611,8 @@ eb_input(struct input_packet *current_input)
 #endif
 
 #if SDN_ENABLE
+    /* update max-id of EB cells: max-id is anounced hop-by-hop in the network
+       it lets nodes to make distinction between EB cells and non-EB cells */
     if(eb_ies.max_sf_offs > sdn_max_used_sf_offs) {
       sdn_max_used_sf_offs = eb_ies.max_sf_offs;
       sf0->max_sf_offs = eb_ies.max_sf_offs;
@@ -757,6 +759,7 @@ tsch_start_coordinator(void)
   tsch_join_priority = 0;
 /* veisi: set sink=coordinator joined to SDN network */
 #if SDN_ENABLE 
+  /* sink node gets its sf and timeslot to send EB */
   sdn_is_joined = 1;
   ready_to_start_report = 1;
   sdn__sf_offset_to_send_eb = sdn_get_sink_sf_eb_offset();
@@ -901,7 +904,7 @@ tsch_associate(const struct input_packet *input_eb, rtimer_clock_t timestamp)
       sf0 = tsch_schedule_add_slotframe(
           ies.ie_tsch_slotframe_and_link.slotframe_handle,
           ies.ie_tsch_slotframe_and_link.slotframe_size);
-// veisi : add data sf
+      // veisi : add data sf
       //sf1 = tsch_schedule_add_slotframe(data_sf_handle, SDN_DATA_SLOTFRAME_SIZE);
       for(i = 0; i < num_links; i++) {
         tsch_schedule_add_link(sf0,
@@ -946,7 +949,6 @@ tsch_associate(const struct input_packet *input_eb, rtimer_clock_t timestamp)
  * number: by this way, it is possible to find the position of shared slots in sf
 */
 #if SDN_SHARE_SLOT_POSITION
-    //int sh_slot_num = 2; //it is supposed this value is read from EB payload
     sf0->num_shared_cell = ies.number_of_shared_cell;
     
     if(ies.max_sf_offs > sdn_max_used_sf_offs) {
@@ -960,59 +962,62 @@ tsch_associate(const struct input_packet *input_eb, rtimer_clock_t timestamp)
     //int num_shared_cell_in_rep = sf0->num_shared_cell / (SDN_DATA_SLOTFRAME_SIZE/SDN_SF_REP_PERIOD);
     //printf("num shared cell: %d %d \n", sf0->num_shared_cell, num_shared_cell_in_rep);
    
-  int num_rep = (int)(SDN_DATA_SLOTFRAME_SIZE / SDN_SF_REP_PERIOD);
-  int num_sh_cell_in_rep = (int)ceil((float)((float)sf0->num_shared_cell / (float)num_rep));
-  //printf("num_sh_cell_in_rep: %d \n", num_sh_cell_in_rep);
+    int num_rep = (int)(SDN_DATA_SLOTFRAME_SIZE / SDN_SF_REP_PERIOD);
+    int num_sh_cell_in_rep = (int)ceil((float)((float)sf0->num_shared_cell / (float)num_rep));
+    //printf("num_sh_cell_in_rep: %d \n", num_sh_cell_in_rep);
 #define SHARED_CELL_LIST_LEN_TMP  DIST_UNIFORM_LEN  
-  const int list_shared_cell_len = (int)(num_sh_cell_in_rep * num_rep);
-  static int list_of_shared_cell[SHARED_CELL_LIST_LEN_TMP];
+    const int list_shared_cell_len = (int)(num_sh_cell_in_rep * num_rep);
+    static int list_of_shared_cell[SHARED_CELL_LIST_LEN_TMP];
   
-  for(i=0; i<SHARED_CELL_LIST_LEN_TMP; i++) {
-    list_of_shared_cell[i] = -1;
-    //printf("list_of_shared_cell %d len %d\n", list_of_shared_cell[i], list_shared_cell_len);
-  }
+    for(i=0; i<SHARED_CELL_LIST_LEN_TMP; i++) {
+      list_of_shared_cell[i] = -1;
+      //printf("list_of_shared_cell %d len %d\n", list_of_shared_cell[i], list_shared_cell_len);
+    }
   
   
-  static struct list_dist_uniform list_dist;
-  list_dist.len = list_shared_cell_len;
+    static struct list_dist_uniform list_dist;
+    list_dist.len = list_shared_cell_len;
   
-  for(i=0; i<DIST_UNIFORM_LEN; i++) {
-    list_dist.list[i] = 0;
-  }
-  sdn_distribute_list_uniform(&list_dist);
+    for(i=0; i<DIST_UNIFORM_LEN; i++) {
+      list_dist.list[i] = 0;
+    }
+    /* extract the distributed ID of shared cells: each cell has its unique ID 
+       the IDs also are distributed geographically in slotframe
+    */
+    sdn_distribute_list_uniform(&list_dist);
   
-  int m;
-  for(i=1; i<=sf0->num_shared_cell; i++) {  
-    for(m=0; m<list_shared_cell_len; m++) {
-      if(list_dist.list[m] == i) {
-        list_of_shared_cell[i-1] = ((m / num_sh_cell_in_rep) * (SDN_SF_REP_PERIOD)) + 
+    int m;
+    for(i=1; i<=sf0->num_shared_cell; i++) {  
+      for(m=0; m<list_shared_cell_len; m++) {
+        if(list_dist.list[m] == i) {
+          list_of_shared_cell[i-1] = ((m / num_sh_cell_in_rep) * (SDN_SF_REP_PERIOD)) + 
                                    ((m % num_sh_cell_in_rep) * (int)(SDN_SF_REP_PERIOD / num_sh_cell_in_rep));        
+        }
       }
     }
-  }
 
-    
-  for(i=0; i<SHARED_CELL_LIST_LEN_TMP; i++) {
-    if(list_of_shared_cell[i] != -1) {
-        tsch_schedule_add_link(sf0,
-        ies.ie_tsch_slotframe_and_link.links[0].link_options,
-        LINK_TYPE_ADVERTISING, &tsch_broadcast_address, list_of_shared_cell[i], 
-        ies.ie_tsch_slotframe_and_link.links[0].channel_offset, 1);
+    // add shared cells to the slotframe
+    for(i=0; i<SHARED_CELL_LIST_LEN_TMP; i++) {
+      if(list_of_shared_cell[i] != -1) {
+          tsch_schedule_add_link(sf0,
+          ies.ie_tsch_slotframe_and_link.links[0].link_options,
+          LINK_TYPE_ADVERTISING, &tsch_broadcast_address, list_of_shared_cell[i], 
+          ies.ie_tsch_slotframe_and_link.links[0].channel_offset, 1);
 
-        if (ies.ie_tsch_slotframe_and_link.links[0].link_options & LINK_OPTION_TX){
-          sdn_add_flow_enrty(&flow_id_shared_cell, ies.ie_tsch_slotframe_and_link.slotframe_handle,
-                             list_of_shared_cell[i], ies.ie_tsch_slotframe_and_link.links[0].channel_offset, 0);
+          if (ies.ie_tsch_slotframe_and_link.links[0].link_options & LINK_OPTION_TX){
+           sdn_add_flow_enrty(&flow_id_shared_cell, ies.ie_tsch_slotframe_and_link.slotframe_handle,
+                               list_of_shared_cell[i], ies.ie_tsch_slotframe_and_link.links[0].channel_offset, 0);
 
-          n = tsch_queue_add_nbr(&flow_id_shared_cell);
-          if(n != NULL) {
-            n->tx_links_count++;
-            if(!(ies.ie_tsch_slotframe_and_link.links[0].link_options & LINK_OPTION_SHARED)) {
-              n->dedicated_tx_links_count++;
+            n = tsch_queue_add_nbr(&flow_id_shared_cell);
+            if(n != NULL) {
+              n->tx_links_count++;
+              if(!(ies.ie_tsch_slotframe_and_link.links[0].link_options & LINK_OPTION_SHARED)) {
+                n->dedicated_tx_links_count++;
+              }
             }
           }
-        }
-      }          
-    }
+        }          
+      }
 #endif
 /*---------------------------------------------------------------------------*/
     } else {
@@ -1219,7 +1224,7 @@ purge_sdn_nbr_table(void){
 #endif
 /*------------------------------------Veisi----------------------------------*/
 #if SDN_ENABLE
-/* A periodic process to send sdn report */
+/* A periodic process to send SDN report */
 PROCESS_THREAD(sdn_report_process, ev, data)
 {
   static struct etimer report_timer;
@@ -1307,8 +1312,9 @@ PROCESS_THREAD(sdn_report_process, ev, data)
         report->payload[R_SENDER_ADDR_INDEX + k] = linkaddr_node_addr.u8[k];
       }	
 	
-      //TODO must be changed later. because the last hop just has the RX cell for FROM-CONTROLLER flow. repeatedly request 
-      //     TX schedule for FROM-CONTROLLER. problem in last node.
+      /* reporting the number of cells corresponding to to/from controller lets
+         the controller to know the report comes from a novel node or joined node
+      */
       int num_entry_to_ctrl = sdn_is_flowid_exist_in_table(&flow_id_to_controller);
       if(num_entry_to_ctrl > 7){num_entry_to_ctrl = 7;}
 #if SDN_SHARED_FROM_CTRL_FLOW || SDN_SHARED_CONTROL_PLANE
@@ -1327,28 +1333,6 @@ PROCESS_THREAD(sdn_report_process, ev, data)
       int num_entry_from_ctrl = num_from_controller_rx_slots;
       if(num_entry_from_ctrl > 7){num_entry_from_ctrl = 7;}
       
-      /*
-            int num_entry_to_ctrl;
-      int num_entry_from_ctrl;
-      if(!first_report){
-        num_entry_to_ctrl = 0;
-        if(num_entry_to_ctrl > 7){num_entry_to_ctrl = 7;}
-        num_entry_from_ctrl = 0;
-        if(num_entry_from_ctrl > 7){num_entry_from_ctrl = 7;}
-        first_report = 1;
-        sdn_is_joined = 1;
-        num_from_controller_rx_slots = 1;
-      } else{
-        
-        num_entry_to_ctrl = 1;
-        if(num_entry_to_ctrl > 7){num_entry_to_ctrl = 7;}
-        num_entry_from_ctrl = 1;
-        if(num_entry_from_ctrl > 7){num_entry_from_ctrl = 7;}
-      }
-      
-      
-      
-      */
       
       //int num_entry_best_effort = sdn_is_flowid_exist_in_table(&flow_id_best_effort);   // disable this to not request besteffort fid
       int num_entry_best_effort = 1;
@@ -1359,6 +1343,7 @@ PROCESS_THREAD(sdn_report_process, ev, data)
       report->payload[R_BATT_INDEX] = 100;                 // battery level
       report->payload[R_REPORT_SEQ_NUM_INDEX] = report_seq;
       report->payload[R_METRIC_TYP_INDEX] = EB_NUM;
+      
       
       /* if number of NBRs are bigger than SDN_MAX_NUM_REPORT_NBR=35, filter best NBRs to report */
       float exp_eb_num = ((float)SDN_REPORT_PERIOD/((float)TSCH_EB_PERIOD/(float)CLOCK_SECOND));
@@ -1390,19 +1375,19 @@ PROCESS_THREAD(sdn_report_process, ev, data)
           }
           if(tmp_num_nbr < SDN_MAX_NUM_REPORT_NBR) {
             find_valid_eb_rate = 1;
-            printf("SDN-TSCH: valid EB rate to report: %f \n", valid_eb_rate);
+            LOG_INFO("SDN-TSCH: valid EB rate to report: %f \n", valid_eb_rate);
           }
         }
       }
       
       /* if it is first report, just send best NBRs*/
       if(num_entry_to_ctrl == 0) {
-        valid_eb_rate = SDN_TRSHLD_BETS_NBRS;
-        //printf("first report set valid eb rate to SDN_TRSHLD_BETS_NBRS \n");
+        valid_eb_rate = SDN_TRSHLD_START_DISCOVERY;
+        //printf("first report set valid eb rate to SDN_TRSHLD_START_DISCOVERY \n");
       }
 
       /* fill report packet with neighbor info: EB, RSSI, addr */
-      //struct sdn_nbr *stat = NULL;  // <-----
+      //struct sdn_nbr *stat = NULL;  
       uint8_t nbr_num = 0;
       linkaddr_t *addr = NULL;
       linkaddr_t *best_addr = NULL;
@@ -1414,9 +1399,8 @@ PROCESS_THREAD(sdn_report_process, ev, data)
         //printf("report process: final val eb rate %f \n", valid_eb_rate);
 	while(stat != NULL){
 	  if(((float)stat->rx_eb_count / exp_eb_num) > valid_eb_rate) {
-	    //printf("in loop 1 \n");
+	    /* is this the first time to send report? */
 	    if(num_entry_to_ctrl == 0) {
-	      //printf("in loop 2 \n");
 	      printf("report process: first report: r1:%f, E:%d, r2:%d \n", ((float)stat->rx_eb_count / exp_eb_num), stat->rx_eb_count, stat->ratio);
               addr = nbr_table_get_lladdr(sdn_nbrs, stat);
 	      nbr_num ++;
@@ -1426,6 +1410,8 @@ PROCESS_THREAD(sdn_report_process, ev, data)
 	        report->payload[report_size] = addr->u8[j];
 	        report_size = report_size + 1;
               }
+              /* the following commented is just a piece of code to experiment the reconfiguration feature ... */
+              /*
               if(linkaddr_node_addr.u8[1] == 6 && (addr->u8[1] == 3 || addr->u8[1] == 2 || addr->u8[1] == 4 || addr->u8[1] == 1)) {
                 report->payload[report_size] = 2;
                 report_size = report_size +1;
@@ -1442,14 +1428,15 @@ PROCESS_THREAD(sdn_report_process, ev, data)
                 report->payload[report_size] = 2;
                 report_size = report_size +1;
               } else {
+              */
               report->payload[report_size] = (int)ceil((((float)stat->ratio / 100) * exp_eb_num));
               report_size = report_size +1;
-              }
+              //}
               
               if(stat->ratio > best_eb_ratio) {
                 best_addr = addr;
                 best_eb_ratio = stat->ratio;
-                printf("\n prepare report to send to %d \n", best_addr->u8[1]);
+                LOG_INFO("\n Find best nbr, prepare report to send to %d \n", best_addr->u8[1]);
                 
               }
               
@@ -1462,7 +1449,8 @@ PROCESS_THREAD(sdn_report_process, ev, data)
 	        report->payload[report_size] = addr->u8[j];
 	        report_size = report_size + 1;
               }
-              
+              /* the following commented is just a piece of code to experiment the reconfiguration feature ... */
+              /*
               if(linkaddr_node_addr.u8[1] == 6 && (addr->u8[1] == 3 || addr->u8[1] == 2 || addr->u8[1] == 4)) {
                 report->payload[report_size] = 2;
                 report_size = report_size +1;
@@ -1473,9 +1461,10 @@ PROCESS_THREAD(sdn_report_process, ev, data)
                 report->payload[report_size] = 1;
                 report_size = report_size +1;
               } else {
+              */
                 report->payload[report_size] = stat->rx_eb_count;
                 report_size = report_size +1;
-              }
+              //}
               
               if(stat->rx_eb_count > best_eb_ratio) {
                 best_addr = addr;
@@ -1495,34 +1484,25 @@ PROCESS_THREAD(sdn_report_process, ev, data)
       packetbuf_clear();
       packetbuf_copyfrom((uint8_t *)report, report_size+1);
 	//printf("sdn report sent: len: %d\n",packetbuf_datalen());
+      
+      /* if node is not joined to the network --> send report to the best discoverd NBR,
+         if joined --> it is up to flow table and schedule to find dest addr 
+      */
 
-	/* if node is not joined to the network --> send report to any NBR,
-           if joined --> it is up to flow table and schedule to find dest addr */
-/*	linkaddr_t flow1 =  {{ 0x01, 0x00 }};
-	linkaddr_t flow2 =  {{ 0x02, 0x00 }};
-        linkaddr_t *flow = NULL;
-	if(linkaddr_cmp(&flow2, &linkaddr_node_addr)) {
-          linkaddr_copy(flow, &flow1);
-	} else {
-          linkaddr_copy(flow, &flow2);
-	}       
-
-*/
       int fid_exsit;
       if((fid_exsit = sdn_is_flowid_exist_in_table(&flow_id_to_controller)) > 0){
         sdn_output(&linkaddr_null, &flow_id_to_controller, 1, NULL);
       } else if(best_addr != NULL) {
         sdn_output(best_addr, &flow_id_to_controller, 1, NULL);
       } else{
-        printf("\n fail to send report packet with size: %d\n", report_size+1);
+        LOG_INFO("\n fail to send report packet with size: %d\n", report_size+1);
       }
       
       if(best_addr != NULL) {
-        printf("\n send report packet with size: %d to %d \n", report_size+1, best_addr->u8[1]);
+        LOG_INFO("\n send report packet with size: %d to %d \n", report_size+1, best_addr->u8[1]);
       } else {
-        printf("\n fail to send report with size: :NULL addr %d\n", report_size+1);
+        LOG_INFO("\n fail to send report with size: :NULL addr %d\n", report_size+1);
       }
-      
       
       /* purge the sdn neighbor table after each report sending */
       purge_sdn_nbr_table();
@@ -1763,6 +1743,9 @@ tsch_init(void)
 }
 /*---------------------------------------------------------------------------*/
 /* Function send for TSCH-MAC, puts the packet in packetbuf in the MAC queue */
+/* in our SDN solution, we handle packets based on their flow-id instead of lladdr 
+   MAC queues correspods to the flow-ids 
+*/
 static void
 send_packet(mac_callback_t sent, void *ptr)
 {
@@ -1945,6 +1928,7 @@ packet_input(void)
     printf("count %u\n", p[i]);
   }
 */
+  /* we pass the SDN packet to SDN layer */
   sdn_input(0);
 #else 
   NETSTACK_NETWORK.input();

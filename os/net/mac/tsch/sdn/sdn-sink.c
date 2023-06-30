@@ -21,7 +21,7 @@
 #define LOG_LEVEL SDN_SINK_LOG_LEVEL
 
 
-static float POS_ARRAY[10][2] = {{0.0, 0.0}, {-2.88, 11.6}, {9.28, 4.26}, {1.35, -0.48}, {-8.39, 0.17}, {16.17, 2.45}, {4.04, -5.93}, {-11.65, 6.66}, {-8.38, -5.82}, {8.13, -3.29}};
+static float POS_ARRAY[10][2] = {{0.0, 0.0}, {-5.22, 7.85}, {1.09, 6.21}, {-2.59, -0.28}, {3.21, 2.71}, {-4.89, -6.57}, {-9.06, 3.35}, {6.78, 8.32}, {10.05, 1.39}, {8.68, -6.19}};
 
 static linkaddr_t last_flow_id = {{ 0x08, 0x00 }};
 static float coef = 0.5;
@@ -30,7 +30,7 @@ static float coef = 0.5;
 #elif SDN_MDPI_TEST
 #define ADMIT_FLOW_PDR        0.84
 #else
-#define ADMIT_FLOW_PDR   SDN_TRSHLD_BETS_NBRS   // graph p = 0.9 : what 0.84? consider one EB lower than expected -> exp =20, 0.84 = (.9*20 - 1)/20
+#define ADMIT_FLOW_PDR   SDN_TRSHLD_START_DISCOVERY   // graph p = 0.9 : what 0.84? consider one EB lower than expected -> exp =20, 0.84 = (.9*20 - 1)/20
 #endif
 //static float coef_link_pdr = 0.9;
 #define GLOBAL_TS_LIST_LEN    SDN_DATA_SLOTFRAME_SIZE
@@ -823,6 +823,9 @@ sdn_add_node_to_global_table(const linkaddr_t *node_addr, const linkaddr_t *pare
   return -1;
 }
 /*---------------------------------------------------------------------------*/
+/* this function calculate number of cells for each hop of a flow regarding 
+   QoS requirements (end-to-end PDR)
+*/
 int 
 allocate_cell_per_hop(const int sink_to_dest_num, const int dest_to_src_num, struct rsrc_spec_of_config *req_spec, struct sdn_packet *config)
 { 
@@ -914,6 +917,7 @@ allocate_cell_per_hop(const int sink_to_dest_num, const int dest_to_src_num, str
     }
     no_addr1 = 1;
     no_addr2 = 1;
+    /* we try to cumpute the bidirectional pdr of each link */
     for(k=0; k<NBR_LIST_LEN; k++) {
       if(linkaddr_cmp(&e1->nbr_list[k].nbr_addr, &addr2)) {
         
@@ -948,6 +952,7 @@ allocate_cell_per_hop(const int sink_to_dest_num, const int dest_to_src_num, str
                 revers_direction_pdr = 0.999;
               }
               
+              /* it is safety margin to compensate the probable fault of overestimation */
               revers_direction_pdr = 0.9 * revers_direction_pdr;
             } else {
               revers_direction_pdr = 0;
@@ -990,6 +995,7 @@ allocate_cell_per_hop(const int sink_to_dest_num, const int dest_to_src_num, str
           if(l[i].pdr_link > 0.999) {
             l[i].pdr_link = 0.999;
           }
+          /* it is safety margin to compensate the probable fault of overestimation */
           l[i].pdr_link = 0.95 * l[i].pdr_link;
         } else {
           l[i].pdr_link = 0;
@@ -1023,7 +1029,7 @@ allocate_cell_per_hop(const int sink_to_dest_num, const int dest_to_src_num, str
         l[i].pdr_link = revers_direction_pdr * l[i].pdr_link;
         
         /************ calculate the RX probability for the ideal mode based
-         ************ on the propagation model (UDGM) */
+         ************ on the propagation model (UDGM), it is just used simulation analysis */
         float x1 = POS_ARRAY[(addr1.u8[1] - 1)][0];
         float y1 = POS_ARRAY[(addr1.u8[1] - 1)][1];
         float x2 = POS_ARRAY[(addr2.u8[1] - 1)][0];
@@ -1081,6 +1087,7 @@ allocate_cell_per_hop(const int sink_to_dest_num, const int dest_to_src_num, str
   }
   
   //LOG_ERR("CONTROLLER: e2e pdr first round %f \n", e2e_pdr);
+  /* add number of cells per hops until end-to-end pdr satisfied */
   while(e2e_pdr < qos_pdr) {
     int min_cell_i = -1;
     float min_pdr = 1;
@@ -1103,7 +1110,7 @@ allocate_cell_per_hop(const int sink_to_dest_num, const int dest_to_src_num, str
   
   
   
-  
+  /* add number of cells per hops until end-to-end pdr satisfied: here is for the ideal model of COOJA */
   while(e2e_pdr_ideal < qos_pdr) {
     int min_cell_i = -1;
     float min_pdr = 1;
@@ -2030,6 +2037,9 @@ dealloc_mem_config_timer(struct config_timer* t)
   }
 }
 /*---------------------------------------------------------------------------*/
+/* set a timer to a sent config packet: the timeout triggers the resending of 
+   of config packet 
+*/
 int 
 set_timer_to_config_packet(struct sent_config_info* sent_config)
 { 
@@ -2218,39 +2228,6 @@ get_shared_cell_list(void)
     } 
   }
 
-/*  
-  int k; 
-  if(sdn_num_shared_cell <= SHARED_CELL_LIST_LEN) {
-    for(i=0; i<sdn_num_shared_cell; i++) {
-      for(k=0; k<sdn_num_shared_cell_in_rep; k++){
-        shared_cell.cell_list[i] = j + (k * (SDN_SF_REP_PERIOD / sdn_num_shared_cell_in_rep));
-        if(k<sdn_num_shared_cell_in_rep-1){
-          i++;
-        }
-      }  
-      j = j + SDN_SF_REP_PERIOD;
-    }
-  } else{
-    for(i=0; i<SHARED_CELL_LIST_LEN; i++) {
-      shared_cell.cell_list[i] = j;
-      j = j + SDN_SF_REP_PERIOD;
-    }
-    LOG_WARN("CONTROLLER: sdn_num_shared_cell exceeds shard cell array len\n");
-  }
-*/
-
-
-  
-  // print shared cells
-/*
-  LOG_INFO("CONTROLLER: list of shared cells:\n");
-  for(i=0; i<SHARED_CELL_LIST_LEN; i++) {
-    if(shared_cell.cell_list[i] > -1) {
-      LOG_INFO(" %d", shared_cell.cell_list[i]);
-    }
-  }
-  LOG_INFO("\n");
-*/  
   return &shared_cell;
 }
 /*---------------------------------------------------------------------------*/
@@ -2306,7 +2283,8 @@ get_request_id(struct sdn_packet* p)
 }
 /*---------------------------------------------------------------------------*/
 /* when receiving the ack of to-controller config, trigger from-controller 
-   config to install */
+   config to install 
+*/
 void
 trigger_from_controller_config_immediately(const linkaddr_t *sender_addr, int reconf_num)
 {
@@ -2748,7 +2726,7 @@ reconfigure_network(struct sdn_packet* p, struct request_id *req_id)
  
   
   /* update req_id and req_spec */
-  req_id->num_reconf = 2;                        //TODO should be updated based on the previous snet config packet automatically
+  req_id->num_reconf = 2;                        //TODO should be updated based on the previous sent config packet automatically
   req_id->req_num = flow_id_to_controller.u8[0];
   
   struct rsrc_spec_of_config *req_spec = (struct rsrc_spec_of_config *) malloc(sizeof(struct rsrc_spec_of_config));
